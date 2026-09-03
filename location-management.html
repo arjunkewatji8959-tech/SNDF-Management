@@ -92,28 +92,79 @@ const headers={'Content-Type':'application/json','x-staff-id':currentUser?.staff
 // LOAD LOCATIONS
 // =====================================================
 async function loadLocations(){
-  const r=await fetch('/api/locations'); const rows=await r.json();
   const body=document.getElementById('locationRows');
+  try {
+    const r=await fetch('/api/locations',{headers});
+    const text=await r.text();
+    let rows=[]; try { rows=text?JSON.parse(text):[]; } catch { throw new Error('Invalid backend response'); }
+    if(!r.ok) throw new Error(rows.error||`Load failed (${r.status})`);
   if(!rows.length){body.innerHTML='<tr><td colspan="7">अभी कोई Location नहीं है।</td></tr>';return;}
-  body.innerHTML=rows.map(x=>`<tr><td>${esc(x.code)}</td><td>${esc(x.name)}</td><td>${esc(x.address||'')}</td><td>${Number(x.latitude).toFixed(6)}, ${Number(x.longitude).toFixed(6)}</td><td>${x.radius_meters} m</td><td>${x.active?'Active':'Inactive'}</td><td><button onclick='editLocation(${JSON.stringify(x)})'>Edit</button> <button class="danger" onclick="deleteLocation(${x.id})">Delete</button></td></tr>`).join('');
+    body.innerHTML=rows.map(x=>`<tr><td>${esc(x.code)}</td><td>${esc(x.name)}</td><td>${esc(x.address||'')}</td><td>${Number(x.latitude).toFixed(6)}, ${Number(x.longitude).toFixed(6)}</td><td>${x.radius_meters} m</td><td>${x.active?'Active':'Inactive'}</td><td><button onclick='editLocation(${JSON.stringify(x)})'>Edit</button> <button class="danger" onclick="deleteLocation(${x.id})">Delete</button></td></tr>`).join('');
+  } catch(err) {
+    console.error('Location load error:',err);
+    body.innerHTML='<tr><td colspan="7">Location load error: '+esc(err.message)+'</td></tr>';
+  }
 }
 
 // =====================================================
 // SAVE / UPDATE
 // =====================================================
-document.getElementById('locationForm').addEventListener('submit',async e=>{
+const locationForm = document.getElementById('locationForm');
+const locationIdEl = document.getElementById('locationId');
+const codeEl = document.getElementById('code');
+const nameEl = document.getElementById('name');
+const addressEl = document.getElementById('address');
+const latitudeEl = document.getElementById('latitude');
+const longitudeEl = document.getElementById('longitude');
+const radiusEl = document.getElementById('radius');
+const msgEl = document.getElementById('msg');
+const formTitleEl = document.getElementById('formTitle');
+
+locationForm.addEventListener('submit',async e=>{
  e.preventDefault();
- const id=document.getElementById('locationId').value;
- const data={code:code.value.trim(),name:name.value.trim(),address:address.value.trim(),latitude:latitude.value,longitude:longitude.value,radius_meters:radius.value,active:1};
- const r=await fetch(id?'/api/locations/'+id:'/api/locations',{method:id?'PUT':'POST',headers,body:JSON.stringify(data)});
- const out=await r.json(); msg.textContent=r.ok?'Location save हो गई।':(out.error||'Error');
- if(r.ok){resetForm();loadLocations();}
+ msgEl.textContent='Saving...';
+ try {
+   const id=locationIdEl.value.trim();
+   const data={
+     code:codeEl.value.trim(),
+     name:nameEl.value.trim(),
+     address:addressEl.value.trim(),
+     latitude:Number(latitudeEl.value),
+     longitude:Number(longitudeEl.value),
+     radius_meters:Number(radiusEl.value),
+     active:1
+   };
+   const r=await fetch(id?'/api/locations/'+encodeURIComponent(id):'/api/locations',{
+     method:id?'PUT':'POST',
+     headers,
+     body:JSON.stringify(data)
+   });
+   const text=await r.text();
+   let out={}; try { out=text?JSON.parse(text):{}; } catch {}
+   if(!r.ok) throw new Error(out.error||`Save failed (${r.status})`);
+   msgEl.textContent='Location save हो गई।';
+   resetForm();
+   await loadLocations();
+ } catch(err) {
+   console.error('Location save error:',err);
+   msgEl.textContent='Error: '+err.message;
+ }
 });
 
 // =====================================================
 // EDIT
 // =====================================================
-function editLocation(x){locationId.value=x.id;code.value=x.code;name.value=x.name;address.value=x.address||'';latitude.value=x.latitude;longitude.value=x.longitude;radius.value=x.radius_meters;formTitle.textContent='✏️ Edit Location';window.scrollTo({top:0,behavior:'smooth'});}
+function editLocation(x){
+  locationIdEl.value=x.id;
+  codeEl.value=x.code;
+  nameEl.value=x.name;
+  addressEl.value=x.address||'';
+  latitudeEl.value=x.latitude;
+  longitudeEl.value=x.longitude;
+  radiusEl.value=x.radius_meters;
+  formTitleEl.textContent='✏️ Edit Location';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
 
 // =====================================================
 // DELETE
@@ -123,12 +174,30 @@ async function deleteLocation(id){if(!confirm('क्या आप इस Locati
 // =====================================================
 // CURRENT GPS
 // =====================================================
-function useMyLocation(){if(!navigator.geolocation){alert('इस device में GPS उपलब्ध नहीं है।');return;}navigator.geolocation.getCurrentPosition(p=>{latitude.value=p.coords.latitude.toFixed(7);longitude.value=p.coords.longitude.toFixed(7);msg.textContent='Current GPS coordinates भर दिए गए हैं।';},()=>alert('GPS permission allow करें।'),{enableHighAccuracy:true,timeout:10000});}
+function useMyLocation(){
+  if(!navigator.geolocation){alert('इस device में GPS उपलब्ध नहीं है।');return;}
+  msgEl.textContent='GPS location प्राप्त हो रही है...';
+  navigator.geolocation.getCurrentPosition(
+    p=>{
+      latitudeEl.value=p.coords.latitude.toFixed(7);
+      longitudeEl.value=p.coords.longitude.toFixed(7);
+      msgEl.textContent=`Current GPS coordinates भर दिए गए हैं। Accuracy: ±${Math.round(p.coords.accuracy)} m`;
+    },
+    err=>{console.error('GPS error:',err);msgEl.textContent='GPS permission/location उपलब्ध नहीं है।';},
+    {enableHighAccuracy:true,timeout:10000,maximumAge:0}
+  );
+}
 
 // =====================================================
 // RESET
 // =====================================================
-function resetForm(){document.getElementById('locationForm').reset();locationId.value='';radius.value=200;formTitle.textContent='📍 Add New Location';msg.textContent='';}
+function resetForm(){
+  locationForm.reset();
+  locationIdEl.value='';
+  radiusEl.value=200;
+  formTitleEl.textContent='📍 Add New Location';
+  msgEl.textContent='';
+}
 
 // =====================================================
 // SAFE TEXT
