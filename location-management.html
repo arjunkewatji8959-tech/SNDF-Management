@@ -1,85 +1,113 @@
 <!doctype html>
-<html lang="hi">
+<html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SNDF Dashboard - Location Management</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SNDF - Location Management</title>
+<link rel="stylesheet" href="style.css">
 <style>
-/* =====================================================
-   LOCATION MANAGEMENT - COMPLETE ADMIN SIDEBAR
-===================================================== */
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f3f7fc;color:#123}
-.appbar{height:68px;background:#0b3d73;color:#fff;display:flex;align-items:center;padding:0 20px;gap:14px}
-.brand{color:#fff;text-decoration:none;font-weight:800;font-size:20px;display:flex;align-items:center;gap:9px}.brand img{width:38px;height:38px;border-radius:50%;background:#fff}.brand small{font-size:10px;display:block;letter-spacing:1px}
-.mobile-toggle{margin-left:auto;background:#fff;color:#0b3d73;border:0;border-radius:8px;padding:9px 12px;display:none}
-.layout{display:flex;min-height:calc(100vh - 68px)}.sidebar{width:220px;background:#0b315b;color:#fff;padding:14px 10px;flex-shrink:0}
-.side-label{font-size:12px;font-weight:800;letter-spacing:1px;padding:10px 12px;color:#b8d5f3}
-.sidebar a{display:block;color:#fff;text-decoration:none;padding:11px 12px;border-radius:8px;margin:2px 0;font-size:14px}.sidebar a:hover,.sidebar a.active{background:#1b65b8}
-.sidebar .exit{color:#ffb0b0;margin-top:10px}.main{flex:1;padding:22px;min-width:0}
-.card{background:#fff;border:1px solid #d7e3f0;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 3px 14px #0000000a}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-weight:700;font-size:14px}
-input{padding:11px;border:1px solid #cbd7e6;border-radius:8px;font-size:15px;width:100%}
-.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}button{border:0;border-radius:8px;padding:11px 16px;background:#1764b5;color:#fff;cursor:pointer}button.secondary{background:#667085}button.danger{background:#b42318}
-.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px solid #e5eaf0;text-align:left;white-space:nowrap}th{background:#f7faff}.msg{font-weight:700;margin-top:10px;min-height:20px}.muted{color:#667085}
-@media(max-width:760px){.mobile-toggle{display:block}.layout{display:block}.sidebar{display:none;width:100%}.sidebar.open{display:block}.grid{grid-template-columns:1fr}.main{padding:14px}.actions button{flex:1 1 150px}}
+/* Location page uses the same dashboard shell as Admin */
+.location-page .app-layout{min-height:calc(100vh - 72px)}
+.location-page .dash-main{padding:22px;}
+.location-page .location-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px}
+.location-page .location-header h1{margin:0;color:#173f74;font-size:24px}
+.location-page .location-header p{margin:5px 0 0;color:#667085;font-size:12px}
+.location-page .card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:18px;margin-bottom:16px;box-shadow:0 3px 12px rgba(0,0,0,.025)}
+.location-page .card h2{margin:0 0 12px;font-size:15px;color:#173f74}
+.location-page .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.location-page .field{display:flex;flex-direction:column;gap:5px}
+.location-page label{font-weight:700;font-size:11px;color:#44566c}
+.location-page input{width:100%;padding:10px;border:1px solid var(--line);border-radius:5px;background:#fbfdff;font-size:12px}
+.location-page .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.location-page button{border:0;border-radius:5px;padding:10px 14px;cursor:pointer;background:#2469c2;color:#fff;font-size:12px}
+.location-page button.secondary{background:#667085}
+.location-page button.danger{background:var(--red)!important}
+.location-page table{width:100%;border-collapse:collapse;min-width:820px;font-size:11px}
+.location-page th,.location-page td{padding:9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.location-page th{color:var(--muted)}
+.location-page .msg{margin-top:10px;font-weight:700;font-size:12px}
+.location-page .muted{color:#667085;font-size:11px;line-height:1.6}
+.location-page .side-label{font-size:10px;font-weight:800;letter-spacing:1px;padding:8px 10px;color:#9fc4ea}
+.location-page .sidebar a{display:block}
+.location-page .sidebar .active-location{background:#194f87}
+@media(max-width:850px){.location-page .grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:500px){.location-page .grid{grid-template-columns:1fr}.location-page .dash-main{padding:12px}}
 </style>
 </head>
-<body>
-<!-- =====================================================
-     TOP BAR
-===================================================== -->
-<header class="appbar"><a class="brand" href="admin.html"><img src="assets-logo.png" alt="SNDF">SNDF <small>SECURITY SERVICES</small></a><button class="mobile-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button></header>
+<body class="location-page" data-role="admin">
+<header class="appbar">
+  <a class="brand" href="index.html"><img src="assets-logo.png" alt="SNDF">SNDF <small>SECURITY SERVICES</small></a>
+  <div class="app-user"><span>📍 Location Management</span></div>
+  <button class="mobile-toggle" type="button">☰</button>
+</header>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="side-label">SNDF ADMIN</div>
+    <a href="admin.html"><button type="button">⌂ Home</button></a>
+    <a href="admin.html"><button type="button">♙ Create / Manage Members</button></a>
+    <a href="admin.html"><button type="button">▤ Attendance & Downloads</button></a>
+    <a href="admin.html"><button type="button">◷ Daily Attendance</button></a>
+    <a href="admin.html"><button type="button">◉ Account</button></a>
+    <a href="admin.html"><button type="button">₹ Advance</button></a>
+    <a href="admin.html"><button type="button">⚠ Fine</button></a>
+    <a href="admin.html"><button type="button">⛔ Suspend ID</button></a>
+    <a href="admin.html"><button type="button">⚑ Notice</button></a>
+    <a href="admin.html"><button type="button">? Help</button></a>
+    <a href="admin.html"><button type="button">▥ Reports & Audit</button></a>
+    <a href="location-management.html"><button type="button" class="active-location">📍 Location Management</button></a>
+    <a href="admin.html"><button type="button">♙ All Profile Records</button></a>
+    <a href="admin.html"><button type="button">♙ My Profile</button></a>
+    <button type="button" id="logout" class="exit">⇥ Logout</button>
+  </aside>
+  <main class="dash-main">
+    <div class="location-header">
+      <div><h1>📍 Location Management</h1><p>Manage GPS locations, allowed radius and active status.</p></div>
+    </div>
+    
+    <!-- =====================================================
+         LOCATION FORM
+    ===================================================== -->
+    <section class="card">
+      <h1 id="formTitle">Add New Location</h1>
+      <p class="muted">Location की GPS सीमा यहाँ सेट करें। Radius के अंदर Check-In की अनुमति दी जा सकती है।</p>
+      <form id="locationForm">
+        <input type="hidden" id="locationId">
+        <div class="grid">
+          <div class="field"><label>Location Code</label><input id="code" placeholder="LOC-01" required></div>
+          <div class="field"><label>Location Name</label><input id="name" placeholder="Main Office" required></div>
+          <div class="field"><label>Address</label><input id="address" placeholder="पूरा पता"></div>
+          <div class="field"><label>Latitude</label><input id="latitude" type="number" step="any" required></div>
+          <div class="field"><label>Longitude</label><input id="longitude" type="number" step="any" required></div>
+          <div class="field"><label>Allowed Radius (मीटर)</label><input id="radius" type="number" min="1" value="200" required></div>
+        </div>
+        <div class="actions">
+          <button type="submit">💾 Save Location</button>
+          <button type="button" class="secondary" onclick="useMyLocation()">📍 मेरी Current Location लें</button>
+          <button type="button" class="secondary" onclick="resetForm()">↩️ Reset</button>
+        </div>
+        <div id="msg" class="msg"></div>
+      </form>
+    </section>
 
-<div class="layout">
-<!-- =====================================================
-     ADMIN SIDEBAR
-===================================================== -->
-<aside class="sidebar">
-<div class="side-label">SNDF ADMIN</div>
-<a href="admin.html">⌂ Home</a>
-<a href="admin.html?view=staff">♙ Create / Manage Members</a>
-<a href="admin.html?view=attendance">▤ Attendance & Downloads</a>
-<a href="admin.html?view=daily">◷ Daily Attendance</a>
-<a href="admin.html?view=account">◉ Account</a>
-<a href="admin.html?view=advance">₹ Advance</a>
-<a href="admin.html?view=fine">⚠ Fine</a>
-<a href="admin.html?view=suspend">⛔ Suspend ID</a>
-<a href="admin.html?view=notice">⚑ Notice</a>
-<a href="admin.html?view=help">? Help</a>
-<a href="admin.html?view=reports">▥ Reports & Audit</a>
-<a class="active" href="location-management.html">📍 Location Management</a>
-<a href="admin.html?view=profile-records">♙ All Profile Records</a>
-<a href="admin.html?view=profile">♙ My Profile</a>
-<a class="exit" href="login.html">⇥ Logout</a>
-</aside>
-
-<main class="main">
-<!-- =====================================================
-     LOCATION FORM
-===================================================== -->
-<section class="card">
-<h1 id="formTitle">📍 Add New Location</h1>
-<p class="muted">Location का नाम, पता, GPS और allowed radius सेट करें।</p>
-<form id="locationForm">
-<input type="hidden" id="locationId">
-<div class="grid">
-<div class="field"><label>Location Code</label><input id="code" placeholder="LOC-01" required></div>
-<div class="field"><label>Location Name</label><input id="name" placeholder="Main Office" required></div>
-<div class="field"><label>Address</label><input id="address" placeholder="पूरा पता"></div>
-<div class="field"><label>Latitude</label><input id="latitude" type="number" step="any" required></div>
-<div class="field"><label>Longitude</label><input id="longitude" type="number" step="any" required></div>
-<div class="field"><label>Allowed Radius (मीटर)</label><input id="radius" type="number" min="1" value="200" required></div>
+    <!-- =====================================================
+         SAVED LOCATIONS TABLE
+    ===================================================== -->
+    <section class="card">
+      <h2>Saved Locations</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Name</th><th>Address</th><th>GPS</th><th>Radius</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody id="locationRows"><tr><td colspan="7">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  
+  </main>
 </div>
-<div class="actions"><button type="submit">💾 Save Location</button><button type="button" class="secondary" onclick="useMyLocation()">📍 Current GPS</button><button type="button" class="secondary" onclick="resetForm()">↩ Reset</button></div>
-<div id="msg" class="msg"></div>
-</form>
-</section>
-
-<!-- =====================================================
-     SAVED LOCATIONS
-===================================================== -->
-<section class="card"><h2>Saved Locations</h2><div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Address</th><th>GPS</th><th>Radius</th><th>Status</th><th>Action</th></tr></thead><tbody id="locationRows"><tr><td colspan="7">Loading...</td></tr></tbody></table></div></section>
-</main></div>
-
+<script>
+document.querySelector('.mobile-toggle')?.addEventListener('click',()=>document.querySelector('.sidebar')?.classList.toggle('open'));
+document.getElementById('logout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser');location.href='login.html?role=admin';});
+</script>
 <script>
 // =====================================================
 // AUTH HELPERS
