@@ -13,7 +13,7 @@ function msg(t){const x=$('#status');if(x){x.textContent=t;x.style.display='bloc
 function escape(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 renderTopProfile();
 let staff=[];
-async function refresh(){try{const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;window._attendanceRows=a;const dl=$('#dailyLocationList');if(dl){const locations=[...new Set(s.map(x=>String(x.location_code||'').trim()).filter(Boolean))];dl.innerHTML=locations.map(v=>`<option value="${escape(v)}"></option>`).join('')}renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();if(role==='admin'){loadPayroll();loadProfileHistory();}}catch(e){console.log(e.message)}}
+async function refresh(){try{const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;window._attendanceRows=a;const dl=$('#dailyLocationList');if(dl){const locations=[...new Set(s.map(x=>String(x.location_code||'').trim()).filter(Boolean))];dl.innerHTML=locations.map(v=>`<option value="${escape(v)}"></option>`).join('')}renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();if(role==='admin'){loadPayroll();loadReports();}}catch(e){console.log(e.message)}}
 function renderAttendance(rows){
  const head=$('#attendanceMatrixHead'), body=$('#attendanceMatrixRows'); if(!head||!body)return;
  const selectedRole=$('#attendanceRoleFilter')?.value||'all';
@@ -62,9 +62,6 @@ function renderProfileRecords(list){
 }
 function editProfile(id){location.href='edit-profile.html?id='+encodeURIComponent(id);}
 window.editProfile=editProfile;
-async function loadProfileHistory(){const b=$('#profileHistoryRows');if(!b||role!=='admin')return;try{const rows=await api('/profile-edit-history');b.innerHTML=rows.map(x=>{let ch={};try{ch=JSON.parse(x.changes_json||'{}')}catch{}const text=Object.entries(ch).map(([k,v])=>`${k}: ${v?.from??''} → ${v?.to??''}`).join(' | ')||'No field change';return `<tr><td>${new Date(x.edited_at).toLocaleString()}</td><td>${escape(x.staff_id)}</td><td>${escape(x.staff_name)}</td><td>${escape(x.edited_by)}</td><td>${escape(text)}</td></tr>`}).join('')||'<tr><td colspan="5">No profile edit history yet.</td></tr>'}catch(e){console.log(e.message)}}
-async function downloadProfileHistory(){try{const r=await fetch(API_URL+'/profile-edit-history/export',{headers:{'x-staff-id':user.staff_id,'x-role':user.role}});if(!r.ok)throw Error('Download failed');const blob=await r.blob();const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='profile-edit-history.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u)}catch(e){alert(e.message)}}
-window.downloadProfileHistory=downloadProfileHistory;
 async function loadProfile(){try{const d=await api('/profile/me');const s=d.user;['name','post','salary','dob','department','location_code','contact_number'].forEach(k=>{const x=$('#p_'+k);if(x)x.value=s[k]||''});if($('#p_dp')&&s.dp)$('#p_dp').value=s.dp;sessionStorage.setItem('sndfUser',JSON.stringify(s));renderTopProfile(s);}catch(e){}}
 async function loadNotices(){const b=$('#noticeRows');if(!b)return;try{const rows=await api('/notices');const mine=rows.filter(n=>n.to_role===role||n.to_role==='all'||n.from_role===role);b.innerHTML=mine.map(n=>`<div class="notice-item"><b>${label(n.from_role)} → ${label(n.to_role)}</b><p>${escape(n.message)}</p><small>${new Date(n.created_at).toLocaleString()}</small></div>`).join('')||'<p>No notices.</p>'}catch(e){}}
 async function loadHelp(){const b=$('#helpRows');if(!b)return;try{const rows=await api('/help');b.innerHTML=rows.map(n=>`<div class="notice-item"><b>${label(n.from_role)}</b><p>${escape(n.message)}</p><small>${new Date(n.created_at).toLocaleString()}</small></div>`).join('')||'<p>No help records.</p>'}catch(e){}}
@@ -75,6 +72,7 @@ window.checkout=checkout;window.removeStaff=removeStaff;window.downloadAttendanc
 let stream=null,photo='',gpsCoords=null,openAttendanceId=null;
 function currentShift(){
   const h=new Date().getHours();
+  if(h>=6&&h<8)return 'Morning Shift';
   return h>=8&&h<20?'Day Shift':'Night Shift';
 }
 function fillAutoAttendance(){
@@ -115,6 +113,21 @@ $('#checkOut')?.addEventListener('click',async()=>{
   try{const d=await api('/attendance/current/checkout',{method:'PUT'});openAttendanceId=null;msg(`${d.message}: ${d.hours_worked} hours`);refresh();}
   catch(e){alert(e.message)}
 });
+
+async function loadReports(){
+  if(role!=='admin'||!$('#reports'))return;
+  const month=$('#reportMonth')?.value||new Date().toISOString().slice(0,7);
+  try{
+    const [s,logs]=await Promise.all([api('/reports/summary?month='+encodeURIComponent(month)),api('/audit-logs?limit=200')]);
+    const map={reportAttendance:s.attendance?.total||0,reportDutyDays:Number(s.attendance?.duty_days||0).toFixed(1),reportHours:Number(s.attendance?.hours||0).toFixed(1),reportFines:'₹'+Number(s.fines||0),reportPayments:'₹'+Number(s.payments||0)};
+    Object.entries(map).forEach(([id,v])=>{const x=$('#'+id);if(x)x.textContent=v});
+    const b=$('#auditRows'); if(b)b.innerHTML=logs.map(x=>`<tr><td>${escape(new Date(x.created_at).toLocaleString())}</td><td>${escape(x.actor_id)}</td><td>${escape(label(x.actor_role))}</td><td><b>${escape(x.action)}</b></td><td>${escape(x.target_id||'—')}</td><td>${escape(x.details||'')}</td></tr>`).join('')||'<tr><td colspan="6">No audit records.</td></tr>';
+  }catch(e){console.log(e.message)}
+}
+function downloadUrl(path,filename){
+  fetch(API_URL+path,{headers:{'x-staff-id':user.staff_id,'x-role':user.role}}).then(async r=>{if(!r.ok){let d={};try{d=await r.json()}catch{}throw Error(d.error||'Download failed')}return r.blob()}).then(blob=>{const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=filename;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u)}).catch(e=>alert(e.message));
+}
+
 fillAutoAttendance(); getLiveGPS(); startLiveCamera();
 $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(form));try{if(form.dataset.type==='staff')await api('/staff',{method:'POST',body:JSON.stringify(d)});if(form.dataset.type==='fine')await api('/fines',{method:'POST',body:JSON.stringify(d)});if(form.dataset.type==='advance')await api('/advances',{method:'POST',body:JSON.stringify(d)});if(form.dataset.type==='notice')await api('/notices',{method:'POST',body:JSON.stringify(d)});if(form.dataset.type==='help')await api('/help',{method:'POST',body:JSON.stringify(d)});msg('Saved successfully');form.reset();refresh()}catch(err){alert(err.message)}}));
 $('#profileForm')?.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{await api('/profile/me',{method:'PUT',body:JSON.stringify(d)});const fresh=await api('/profile/me');sessionStorage.setItem('sndfUser',JSON.stringify(fresh.user));msg('Profile updated');loadProfile()}catch(err){alert(err.message)}});
@@ -126,7 +139,17 @@ $('form[data-type="staff"] select[name="role"]')?.addEventListener('change',()=>
 $('#createLocation')?.addEventListener('change',()=>fillCreateParent(staff));
 $('#profileRoleFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
 $('#profileLocationFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
-$('#downloadProfileHistory')?.addEventListener('click',downloadProfileHistory);
+$('#downloadProfileUpdateSheet')?.addEventListener('click',()=>{
+  const qs=new URLSearchParams();
+  const r=$('#profileRoleFilter')?.value||'all';
+  const l=$('#profileLocationFilter')?.value||'all';
+  if(r!=='all')qs.set('role',r); if(l!=='all')qs.set('location',l);
+  fetch(API_URL+'/profile-update-sheet?'+qs.toString(),{headers:{'x-staff-id':user.staff_id,'x-role':user.role}})
+    .then(async x=>{if(!x.ok){let d={};try{d=await x.json()}catch{}throw Error(d.error||'Download failed')}return x.blob()})
+    .then(blob=>{const z=URL.createObjectURL(blob),a=document.createElement('a');a.href=z;a.download='profile-update-sheet-'+new Date().toISOString().slice(0,10)+'.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(z);msg('Profile Update Sheet downloaded ✓')})
+    .catch(e=>alert(e.message));
+});
+
 filterMemberLists();
 $('#attendanceRoleFilter')?.addEventListener('change',()=>renderAttendance(window._attendanceRows||[]));
 $('#accountRoleFilter')?.addEventListener('change',()=>loadPayroll());
@@ -143,3 +166,10 @@ if(role==='admin') $('#fine')?.querySelector('.fine-form')?.insertAdjacentHTML('
 // Admin controls the complete profile. Other roles only control DP + contact.
 if(role==='admin') ['name','post','salary','dob','department','location_code'].forEach(k=>$('#p_'+k)?.removeAttribute('disabled'));
 $('#p_dp_file')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;const rd=new FileReader();rd.onload=()=>$('#p_dp').value=rd.result;rd.readAsDataURL(f)});
+
+$('#reportMonth')?.setAttribute('value',new Date().toISOString().slice(0,7));
+$('#reportMonth')?.addEventListener('change',loadReports);
+$('#downloadAuditReport')?.addEventListener('click',()=>downloadUrl('/audit-logs/export','sndf-audit-log.csv'));
+$('#downloadPayrollReport')?.addEventListener('click',()=>{const m=$('#reportMonth')?.value||new Date().toISOString().slice(0,7);downloadUrl('/reports/payroll/export?month='+encodeURIComponent(m),'sndf-payroll-'+m+'.csv')});
+
+$('#logout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser');location.replace('login.html')});

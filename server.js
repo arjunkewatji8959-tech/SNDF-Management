@@ -4,6 +4,7 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -84,10 +85,11 @@ db.serialize(()=>{
     id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT, staff_name TEXT, staff_role TEXT,
     reason TEXT, suspended_until TEXT, created_at TEXT
   )`);
-  db.run(`CREATE TABLE IF NOT EXISTS profile_edit_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, staff_db_id INTEGER, staff_id TEXT, staff_name TEXT,
-    edited_by TEXT, edited_at TEXT, changes_json TEXT
+  db.run(`CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, actor_id TEXT, actor_role TEXT,
+    action TEXT NOT NULL, target_id TEXT, details TEXT, created_at TEXT NOT NULL
   )`);
+
   db.run("UPDATE staff SET role='admin',post='Admin' WHERE role='field_officer' OR role='field officer'");
   db.run("UPDATE staff SET role='field_officer',post='Field Officer' WHERE role='fieldofficer'");
 
@@ -98,14 +100,41 @@ db.serialize(()=>{
     const adminId = process.env.ADMIN_ID || 'admin';
     const adminPassword = process.env.ADMIN_PASSWORD || 'adi2026';
     const adminName = process.env.ADMIN_NAME || 'SNDF Admin';
-    db.run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,dob,department,contact_number,dp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ['admin',adminName,adminId,adminPassword,'Admin',0,'','','','Management','',''],
-      (err) => { if (err) console.error('Admin bootstrap failed:', err.message); else console.log(`Production Admin created: ${adminId}. Change the password before public launch.`); }
-    );
+    bcrypt.hash(adminPassword, 12, (hashErr, hashedPassword)=>{
+      if(hashErr){ console.error('Admin password hash failed:', hashErr.message); return; }
+      db.run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,dob,department,contact_number,dp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+        ['admin',adminName,adminId,hashedPassword,'Admin',0,'','','','Management','',''],
+        (err) => { if (err) console.error('Admin bootstrap failed:', err.message); else console.log(`Production Admin created: ${adminId}.`); }
+      );
+    });
   });
 });
 
 // Authentication for protected APIs. Frontend sends x-staff-id + x-role after login.
+function audit(actor, action, targetId, details=''){
+  db.run(`INSERT INTO audit_logs(actor_id,actor_role,action,target_id,details,created_at) VALUES(?,?,?,?,?,?)`,
+    [actor?.staff_id||'',actor?.role||'',action,String(targetId||''),String(details||''),new Date().toISOString()],
+    ()=>{});
+}
+const LOCATION_COORDS = {
+  'LOC-01': {lat:Number(process.env.LOC_01_LAT), lng:Number(process.env.LOC_01_LNG)},
+  'LOC-02': {lat:Number(process.env.LOC_02_LAT), lng:Number(process.env.LOC_02_LNG)},
+  'LOC-03': {lat:Number(process.env.LOC_03_LAT), lng:Number(process.env.LOC_03_LNG)}
+};
+function distanceMeters(lat1,lng1,lat2,lng2){
+  const R=6371000, rad=Math.PI/180, dLat=(lat2-lat1)*rad, dLng=(lng2-lng1)*rad;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*rad)*Math.cos(lat2*rad)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+function checkGeofence(locationCode, locationText){
+  const cfg=LOCATION_COORDS[locationCode];
+  if(!cfg || !Number.isFinite(cfg.lat) || !Number.isFinite(cfg.lng)) return {configured:false,allowed:true};
+  const m=String(locationText||'').match(/(-?\\d+(?:\\.\\d+)?)[,\\s]+(-?\\d+(?:\\.\\d+)?)/);
+  if(!m) return {configured:true,allowed:false,error:'Valid GPS coordinates are required for attendance.'};
+  const lat=Number(m[1]),lng=Number(m[2]),distance=Math.round(distanceMeters(lat,lng,cfg.lat,cfg.lng));
+  return {configured:true,allowed:distance<=Number(process.env.GEOFENCE_RADIUS_METERS||200),distance,radius:Number(process.env.GEOFENCE_RADIUS_METERS||200)};
+}
+
 function auth(req,res,next){
   const staffId=req.get('x-staff-id');
   const role=req.get('x-role');
@@ -125,6 +154,28 @@ app.get('/api/health',(req,res)=>res.json({status:'healthy',service:'SNDF backen
 app.get('/api/staff',auth,(req,res)=>{
   all('SELECT id,role,name,staff_id,post,salary,location_code,parent_id,status,suspended_until,suspension_reason,dob,department,contact_number,dp FROM staff ORDER BY id DESC',[],res);
 });
+// PROFILE UPDATE SHEET - Admin only. Exports current profile records as CSV.
+app.get('/api/profile-update-sheet',auth,roles('admin'),(req,res)=>{
+  const allowed=['field_officer','supervisor','guard'];
+  const role=String(req.query.role||'all');
+  const location=String(req.query.location||'all');
+  const params=[];
+  let sql=`SELECT role,name,staff_id,post,salary,dob,department,location_code,parent_id,contact_number,status,suspended_until,suspension_reason,dp FROM staff WHERE role IN (?,?,?)`;
+  params.push(...allowed);
+  if(role!=='all' && allowed.includes(role)){sql+=' AND role=?';params.push(role);}
+  if(location!=='all' && location){sql+=' AND location_code=?';params.push(location);}
+  sql+=' ORDER BY CASE role WHEN \'field_officer\' THEN 1 WHEN \'supervisor\' THEN 2 WHEN \'guard\' THEN 3 ELSE 4 END, staff_id';
+  db.all(sql,params,(err,rows)=>{
+    if(err)return res.status(500).json({error:err.message});
+    const headers=['Role','Name','Staff ID','Post','Salary','DOB','Department','Location Code','Parent ID','Contact Number','Status','Suspended Until','Suspension Reason','Photo'];
+    const csvVal=v=>{let x=String(v??''); if(/[",\n\r]/.test(x)) x='"'+x.replace(/"/g,'""')+'"'; return x;};
+    const csv=[headers.join(','),...rows.map(r=>[r.role,r.name,r.staff_id,r.post,r.salary,r.dob,r.department,r.location_code,r.parent_id,r.contact_number,r.status,r.suspended_until,r.suspension_reason,r.dp].map(csvVal).join(','))].join('\n');
+    res.setHeader('Content-Type','text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition',`attachment; filename="profile-update-sheet-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.send('\ufeff'+csv);
+  });
+});
+
 app.post('/api/staff',auth,roles('admin'),(req,res)=>{
   const x=req.body||{};
   const role=['admin','field_officer','supervisor','guard'].includes(x.role)?x.role:null;
@@ -132,8 +183,16 @@ app.post('/api/staff',auth,roles('admin'),(req,res)=>{
   const location=String(x.location_code||'').trim(), parent=String(x.parent_id||'').trim();
   if(role!=='field_officer' && !['LOC-01','LOC-02','LOC-03'].includes(location))
     return res.status(400).json({error:'Supervisor/Guard must have a valid Location Code'});
-  const finish=()=>run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,dob,department,contact_number,dp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [role,x.name,x.staff_id,x.password,x.post||role,x.salary||0,location,parent,x.dob||'',x.department||'',x.contact_number||'',x.dp||''],res,row=>res.status(201).json({id:row.lastID,message:'Staff created'}));
+  const finish=()=>{
+    bcrypt.hash(String(x.password),12,(he,hashed)=>{
+      if(he)return res.status(500).json({error:'Password setup failed'});
+      run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,dob,department,contact_number,dp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [role,x.name,x.staff_id,hashed,x.post||role,x.salary||0,location,parent,x.dob||'',x.department||'',x.contact_number||'',x.dp||''],res,row=>{
+          audit(req.user,'STAFF_CREATED',x.staff_id,`${role} ${x.name} created`);
+          res.status(201).json({id:row.lastID,message:'Staff created'});
+        });
+    });
+  };
   if(role==='supervisor' && parent)return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{if(e)return res.status(500).json({error:e.message});if(!p||p.role!=='field_officer')return res.status(400).json({error:'Supervisor Parent ID must be a Field Officer ID'});finish();});
   if(role==='guard' && parent)return get('SELECT role,location_code FROM staff WHERE staff_id=?',[parent],(e,p)=>{if(e)return res.status(500).json({error:e.message});if(!p||p.role!=='supervisor')return res.status(400).json({error:'Guard Parent ID must be a Supervisor ID'});if(p.location_code!==location)return res.status(400).json({error:'Guard location must match the Supervisor location'});finish();});
   finish();
@@ -174,31 +233,22 @@ app.put('/api/staff/:id/profile',auth,roles('admin'),(req,res)=>{
       let sql='UPDATE staff SET name=?,role=?,post=?,salary=?,dob=?,department=?,location_code=?,parent_id=?,contact_number=?,dp=?';
       const params=vals;
       const pwd=String(x.password||'').trim();
-      if(pwd){if(pwd.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});sql+=',password=?';params.splice(params.length-1,0,pwd);}
-      sql+=' WHERE id=?';
-      const changes = {};
-      const fields = {name:x.name||s.name,role:newRole,post:x.post||s.post,salary:x.salary??s.salary,dob:x.dob||'',department:x.department||'',location_code:location,parent_id:parent,contact_number:x.contact_number||'',dp:x.dp||s.dp||''};
-      Object.entries(fields).forEach(([k,v])=>{ if(String(s[k]??'')!==String(v??'')) changes[k]={from:s[k]??'',to:v??''}; });
-      if(pwd) changes.password={from:'[hidden]',to:'[changed]'};
-      run(sql,params,res,()=>{
-        run('INSERT INTO profile_edit_history(staff_db_id,staff_id,staff_name,edited_by,edited_at,changes_json) VALUES(?,?,?,?,?,?)',[s.id,s.staff_id,fields.name,req.user.staff_id,new Date().toISOString(),JSON.stringify(changes)],res,()=>res.json({message:'Profile updated successfully',changes}));
-      });
+      const finishUpdate=(hashedPwd)=>{
+        let finalSql=sql, finalParams=params.slice();
+        if(hashedPwd){finalSql+=',password=?';finalParams.splice(finalParams.length-1,0,hashedPwd);}
+        finalSql+=' WHERE id=?';
+        run(finalSql,finalParams,res,()=>{
+          audit(req.user,'PROFILE_UPDATED',s.staff_id,`Profile updated for ${s.staff_id}; password ${hashedPwd?'changed':'unchanged'}`);
+          res.json({message:'Profile updated successfully'});
+        });
+      };
+      if(pwd){
+        if(pwd.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});
+        bcrypt.hash(pwd,12,(he,h)=>{if(he)return res.status(500).json({error:'Password setup failed'});finishUpdate(h);});
+      } else finishUpdate('');
+
     }
   });
-});
-
-// PROFILE EDIT HISTORY - Admin can review/download every profile change. Password values are never exposed.
-app.get('/api/profile-edit-history',auth,roles('admin'),(req,res)=>{
-  all('SELECT id,staff_db_id,staff_id,staff_name,edited_by,edited_at,changes_json FROM profile_edit_history ORDER BY id DESC LIMIT 1000',[],res);
-});
-app.get('/api/profile-edit-history/export',auth,roles('admin'),(req,res)=>{
-  all('SELECT id,staff_db_id,staff_id,staff_name,edited_by,edited_at,changes_json FROM profile_edit_history ORDER BY id ASC',[],{json:rows=>{
-    const header='History ID,Staff DB ID,Staff ID,Staff Name,Edited By,Edited At,Changes';
-    const csv=[header,...rows.map(r=>[r.id,r.staff_db_id,r.staff_id,r.staff_name,r.edited_by,r.edited_at,r.changes_json].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\n');
-    res.setHeader('Content-Type','text/csv');
-    res.setHeader('Content-Disposition','attachment; filename="profile-edit-history.csv"');
-    res.send(csv);
-  }});
 });
 
 // PASSWORD MANAGEMENT - Admin only. Existing passwords are never returned to the frontend.
@@ -208,7 +258,13 @@ app.put('/api/staff/:id/password',auth,roles('admin'),(req,res)=>{
   get('SELECT id,role,name,staff_id FROM staff WHERE id=?',[req.params.id],(err,s)=>{
     if(err)return res.status(500).json({error:err.message});
     if(!s)return res.status(404).json({error:'Staff not found'});
-    run('UPDATE staff SET password=? WHERE id=?',[newPassword,s.id],res,()=>res.json({message:`Password changed for ${s.name} (${s.staff_id})`}));
+    bcrypt.hash(newPassword,12,(he,hashed)=>{
+      if(he)return res.status(500).json({error:'Password setup failed'});
+      run('UPDATE staff SET password=? WHERE id=?',[hashed,s.id],res,()=>{
+        audit(req.user,'PASSWORD_CHANGED',s.staff_id,`Password changed for ${s.staff_id}`);
+        res.json({message:`Password changed for ${s.name} (${s.staff_id})`});
+      });
+    });
   });
 });
 
@@ -232,7 +288,7 @@ app.put('/api/staff/:id/suspend',auth,roles('admin'),(req,res)=>{
     if(['admin'].includes(s.role))return res.status(403).json({error:'Admin cannot be suspended here'});
     const until=new Date(Date.now()+hours*3600000).toISOString();
     run("UPDATE staff SET status='suspended',suspended_until=?,suspension_reason=? WHERE id=?",[until,reason,s.id],res,()=>{
-      run('INSERT INTO suspension_notifications(staff_id,staff_name,staff_role,reason,suspended_until,created_at) VALUES(?,?,?,?,?,?)',[s.staff_id,s.name,s.role,reason,until,new Date().toISOString()],res,row=>res.json({message:'ID suspended',notification_id:row.lastID,suspended_until:until}));
+      run('INSERT INTO suspension_notifications(staff_id,staff_name,staff_role,reason,suspended_until,created_at) VALUES(?,?,?,?,?,?)',[s.staff_id,s.name,s.role,reason,until,new Date().toISOString()],res,row=>{audit(req.user,'ID_SUSPENDED',s.staff_id,`${reason}; until ${until}`);res.json({message:'ID suspended',notification_id:row.lastID,suspended_until:until});});
     });
   });
 });
@@ -259,6 +315,8 @@ app.post('/api/attendance',auth,(req,res)=>{
     if(err)return res.status(500).json({error:err.message}); if(!s)return res.status(404).json({error:'Staff ID not found'});
     if(req.user.role!=='admin' && s.staff_id!==req.user.staff_id)return res.status(403).json({error:'You can mark attendance only for yourself'});
     const shift=SHIFT_SCHEDULES[x.shift]?x.shift:'Day Shift';
+    const geo=checkGeofence(s.location_code,x.location||'');
+    if(geo.configured && !geo.allowed) return res.status(403).json({error:geo.error||`You are outside ${s.location_code} geofence (${geo.distance}m / ${geo.radius}m).`});
     const now=new Date(), date=now.toISOString().slice(0,10), time=now.toTimeString().slice(0,8), iso=now.toISOString();
     // Never allow a second open shift. This also protects an overnight Night Shift.
     get('SELECT id,check_out FROM attendance WHERE staff_id=? AND check_out IS NULL ORDER BY id DESC LIMIT 1',[targetId],(ae,open)=>{
@@ -268,7 +326,7 @@ app.post('/api/attendance',auth,(req,res)=>{
         if(de)return res.status(500).json({error:de.message});
         if(existing)return res.status(409).json({error:'Today attendance is already completed'});
         run('INSERT INTO attendance(staff_id,name,date,photo,location,shift,check_in,check_in_at,attendance_status) VALUES(?,?,?,?,?,?,?,?,?)',
-          [s.staff_id,s.name,date,x.photo||'',x.location||'',shift,time,iso,'Present - Shift Started'],res,row=>res.status(201).json({id:row.lastID,shift,shift_time:`${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end}`,message:`${shift} check-in saved`}));
+          [s.staff_id,s.name,date,x.photo||'',x.location||'',shift,time,iso,'Present - Shift Started'],res,row=>{audit(req.user,'ATTENDANCE_CHECKIN',s.staff_id,`${shift}; location=${x.location||''}`);res.status(201).json({id:row.lastID,shift,shift_time:`${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end}`,message:`${shift} check-in saved`});});
       });
     });
   });
@@ -287,7 +345,7 @@ app.put('/api/attendance/:id/checkout',auth,(req,res)=>{
     hours=Number(hours.toFixed(2));
     const status=hours<8?'Half Day - Early Leave (< 8 Hours)':'Present - Shift Completed (8+ Hours)';
     run('UPDATE attendance SET check_out=?,hours_worked=?,attendance_status=? WHERE id=? AND check_out IS NULL',
-      [now.toTimeString().slice(0,8),hours,status,row.id],res,()=>res.json({message:'Check-out saved',hours_worked:hours,attendance_status:status,half_day:hours<8}));
+      [now.toTimeString().slice(0,8),hours,status,row.id],res,()=>{audit(req.user,'ATTENDANCE_CHECKOUT',row.staff_id,`${hours} hours; ${status}`);res.json({message:'Check-out saved',hours_worked:hours,attendance_status:status,half_day:hours<8});});
   });
 });
 app.delete('/api/attendance/:id',auth,roles('admin'),(req,res)=>run('DELETE FROM attendance WHERE id=?',[req.params.id],res,()=>res.json({message:'Attendance deleted'})));
@@ -318,7 +376,7 @@ app.post('/api/fines',auth,roles('admin','field_officer'),(req,res)=>{
 
 // ADVANCE - Admin only.
 app.get('/api/advances',auth,(req,res)=>{ const sql=req.user.role==='admin'?'SELECT * FROM advances ORDER BY id DESC':'SELECT * FROM advances WHERE staff_id=? ORDER BY id DESC'; all(sql,req.user.role==='admin'?[]:[req.user.staff_id],res); });
-app.post('/api/advances',auth,roles('admin'),(req,res)=>{const x=req.body||{}; if(!x.staff_id||Number(x.amount)<=0)return res.status(400).json({error:'Staff ID and positive advance are required'}); run('INSERT INTO advances(staff_id,amount,note,given_by,created_at) VALUES(?,?,?,?,?)',[x.staff_id,Number(x.amount),x.note||'',req.user.staff_id,new Date().toISOString()],res,row=>res.status(201).json({id:row.lastID,message:'Advance recorded'}));});
+app.post('/api/advances',auth,roles('admin'),(req,res)=>{const x=req.body||{}; if(!x.staff_id||Number(x.amount)<=0)return res.status(400).json({error:'Staff ID and positive advance are required'}); run('INSERT INTO advances(staff_id,amount,note,given_by,created_at) VALUES(?,?,?,?,?)',[x.staff_id,Number(x.amount),x.note||'',req.user.staff_id,new Date().toISOString()],res,row=>{audit(req.user,'ADVANCE_ADDED',x.staff_id,`₹${x.amount}`);res.status(201).json({id:row.lastID,message:'Advance recorded'});});});
 
 // ACCOUNT + PAYROLL. Admin can view/pay all staff except Admin's own salary.
 function accountForStaff(staffId, cb){
@@ -361,7 +419,7 @@ app.post('/api/payments',auth,roles('admin'),(req,res)=>{
     if(err)return res.status(404).json({error:'Staff not found'});
     if(a.staff.role==='admin')return res.status(403).json({error:'Admin payment is not applicable'});
     const amount=Number(x.amount); if(amount>a.total_remaining)return res.status(400).json({error:`Payment cannot exceed remaining salary ₹${a.total_remaining}`});
-    run('INSERT INTO payments(staff_id,amount,paid_by,paid_at,note) VALUES(?,?,?,?,?)',[staffId,amount,req.user.staff_id,new Date().toISOString(),x.note||'Salary payment'],res,row=>res.status(201).json({id:row.lastID,message:'Payment completed',amount,remaining:a.total_remaining-amount}));
+    run('INSERT INTO payments(staff_id,amount,paid_by,paid_at,note) VALUES(?,?,?,?,?)',[staffId,amount,req.user.staff_id,new Date().toISOString(),x.note||'Salary payment'],res,row=>{audit(req.user,'PAYMENT_COMPLETED',staffId,`₹${amount}`);res.status(201).json({id:row.lastID,message:'Payment completed',amount,remaining:a.total_remaining-amount});});
   });
 });
 
@@ -375,6 +433,46 @@ app.get('/api/notices',auth,(req,res)=>{ const sql=req.user.role==='admin' ? 'SE
 app.post('/api/notices',auth,(req,res)=>{const x=req.body||{}; if(!x.to_role||!x.message)return res.status(400).json({error:'Recipient and message required'}); run('INSERT INTO notices(from_role,to_role,message,created_at) VALUES(?,?,?,?)',[req.user.role,x.to_role,x.message,new Date().toISOString()],res,()=>res.status(201).json({message:'Notice sent'}));});
 app.get('/api/help',auth,(req,res)=>{ const sql=req.user.role==='admin'?'SELECT * FROM help_requests ORDER BY id DESC LIMIT 200':'SELECT * FROM help_requests WHERE from_role=? ORDER BY id DESC LIMIT 200'; all(sql,req.user.role==='admin'?[]:[req.user.role],res); });
 app.post('/api/help',auth,(req,res)=>{const x=req.body||{}; if(!x.message)return res.status(400).json({error:'Help message required'}); run('INSERT INTO help_requests(from_role,message,created_at) VALUES(?,?,?)',[req.user.role,x.message,new Date().toISOString()],res,()=>res.status(201).json({message:'Help request sent'}));});
+
+// REPORTS + AUDIT LOGS - Admin only.
+app.get('/api/reports/summary',auth,roles('admin'),(req,res)=>{
+  const month=/^\\d{4}-\\d{2}$/.test(String(req.query.month||''))?String(req.query.month):new Date().toISOString().slice(0,7);
+  const out={month};
+  db.get(`SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN attendance_status LIKE 'Half Day%' THEN .5 ELSE 1 END),0) AS duty_days,
+    COALESCE(SUM(hours_worked),0) AS hours FROM attendance WHERE substr(date,1,7)=? AND check_out IS NOT NULL`,[month],(e,a)=>{
+    if(e)return res.status(500).json({error:e.message}); out.attendance=a;
+    db.get(`SELECT COALESCE(SUM(amount),0) AS fines FROM fines WHERE substr(created_at,1,7)=?`,[month],(e,f)=>{
+      if(e)return res.status(500).json({error:e.message}); out.fines=f?.fines||0;
+      db.get(`SELECT COALESCE(SUM(amount),0) AS payments FROM payments WHERE substr(paid_at,1,7)=?`,[month],(e,p)=>{
+        if(e)return res.status(500).json({error:e.message}); out.payments=p?.payments||0;
+        res.json(out);
+      });
+    });
+  });
+});
+app.get('/api/audit-logs',auth,roles('admin'),(req,res)=>{
+  const limit=Math.min(500,Math.max(1,Number(req.query.limit||200)));
+  all(`SELECT * FROM audit_logs ORDER BY id DESC LIMIT ${limit}`,[],res);
+});
+app.get('/api/audit-logs/export',auth,roles('admin'),(req,res)=>{
+  db.all('SELECT * FROM audit_logs ORDER BY id DESC',(err,rows)=>{
+    if(err)return res.status(500).json({error:err.message});
+    const headers=['ID','Actor ID','Actor Role','Action','Target ID','Details','Created At'];
+    const val=v=>{let x=String(v??'');return /[",\\n\\r]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x};
+    const csv=[headers.join(','),...rows.map(r=>[r.id,r.actor_id,r.actor_role,r.action,r.target_id,r.details,r.created_at].map(val).join(','))].join('\\n');
+    res.setHeader('Content-Type','text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition','attachment; filename="sndf-audit-log.csv"');
+    res.send('\\ufeff'+csv);
+  });
+});
+app.get('/api/reports/payroll/export',auth,roles('admin'),(req,res)=>{
+  const month=/^\\d{4}-\\d{2}$/.test(String(req.query.month||''))?String(req.query.month):new Date().toISOString().slice(0,7);
+  all(`SELECT s.staff_id,s.name,s.role,s.location_code,s.salary,
+    COALESCE((SELECT SUM(amount) FROM fines f WHERE f.guard_id=s.staff_id AND substr(f.created_at,1,7)=?),0) fine,
+    COALESCE((SELECT SUM(amount) FROM advances a WHERE a.staff_id=s.staff_id AND substr(a.created_at,1,7)=?),0) advance,
+    COALESCE((SELECT SUM(amount) FROM payments p WHERE p.staff_id=s.staff_id AND substr(p.paid_at,1,7)=?),0) paid
+    FROM staff s WHERE s.role IN ('field_officer','supervisor','guard') ORDER BY s.role,s.staff_id`,[month,month,month],res);
+});
 
 // Login supports exactly four roles.
 app.post('/api/login',(req,res)=>{
