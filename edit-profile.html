@@ -1,0 +1,19 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Edit Profile • SNDF</title><link rel="stylesheet" href="style.css"></head>
+<body data-role="admin"><header class="appbar"><a class="brand" href="admin.html"><img src="assets-logo.png" alt="SNDF">SNDF <small>SECURITY SERVICES</small></a><a class="action" href="admin.html">← Back</a></header>
+<main class="dash-main edit-profile-page"><div id="status" class="status"></div><div class="panel"><span class="eyebrow">ADMIN CONTROL</span><h1>Edit Profile</h1><p class="muted-note">Admin can update staff identity, role, location, parent ID, contact, salary and password.</p>
+<form id="editProfileForm" class="grid-form">
+<label>Photo<input id="ep_dp_file" type="file" accept="image/*"><input id="ep_dp" name="dp" type="hidden"></label>
+<label>Name<input id="ep_name" name="name" required></label>
+<label>Staff ID<input id="ep_staff_id" name="staff_id" readonly></label>
+<label>Role<select id="ep_role" name="role" required><option value="field_officer">Field Officer</option><option value="supervisor">Supervisor</option><option value="guard">Guard</option></select></label>
+<label>Location Code<select id="ep_location_code" name="location_code"><option value="">No Location</option><option value="LOC-01">LOC-01</option><option value="LOC-02">LOC-02</option><option value="LOC-03">LOC-03</option></select></label>
+<label>Parent ID<select id="ep_parent_id" name="parent_id"><option value="">No Parent</option></select></label>
+<label>Post<input id="ep_post" name="post"></label>
+<label>Salary<input id="ep_salary" name="salary" type="number" min="0"></label>
+<label>DOB<input id="ep_dob" name="dob" type="date"></label>
+<label>Department<input id="ep_department" name="department"></label>
+<label>Contact Number<input id="ep_contact_number" name="contact_number"></label>
+<label>New Password<input id="ep_password" name="password" type="password" minlength="6" placeholder="Leave blank to keep current"></label>
+<button class="action primary-action" type="submit">Save Profile</button>
+</form></div></main>
+<script src="edit-profile.js"></script></body></html>

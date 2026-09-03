@@ -1,0 +1,10 @@
+{
+  "period": "2026-07-01 through 2026-09-03",
+  "staff": {"admin": 1, "field_officer": 1, "supervisor": 3, "guard": 12},
+  "locations": ["LOC-01", "LOC-02", "LOC-03"],
+  "attendance_records": 1040,
+  "half_day_records": 45,
+  "shifts": ["Morning Shift", "Day Shift", "Night Shift"],
+  "profile_edit_history_records": 6,
+  "exports": ["attendance-july-2026.csv", "attendance-august-2026.csv", "attendance-september-2026-to-03.csv", "fines.csv", "payments.csv", "advances.csv", "notices.csv", "help-responses.csv", "profile-edit-history.csv"]
+}
