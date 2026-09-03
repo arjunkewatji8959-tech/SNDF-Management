@@ -1,3 +1,7 @@
+// =====================================================
+// SNDF MANAGEMENT | JAVASCRIPT SECTIONS
+// File-level guide: keep each feature inside its marked section.
+// =====================================================
 const API_URL='/api';
 const user=JSON.parse(sessionStorage.getItem('sndfUser')||'null');
 const role=document.body.dataset.role;

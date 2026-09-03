@@ -1,3 +1,7 @@
+// =====================================================
+// SNDF MANAGEMENT | JAVASCRIPT SECTIONS
+// File-level guide: keep each feature inside its marked section.
+// =====================================================
 // SNDF Security Services - role based Node.js + SQLite backend
 const express = require('express');
 const cors = require('cors');
@@ -478,13 +482,105 @@ app.get('/api/reports/payroll/export',auth,roles('admin'),(req,res)=>{
 app.post('/api/login',(req,res)=>{
   const {staff_id,password,role}=req.body||{};
   if(!staff_id||!password||!['admin','field_officer','supervisor','guard'].includes(role))return res.status(400).json({error:'Select a valid login role, Staff ID and password'});
-  get('SELECT id,role,name,staff_id,post,salary,location_code,parent_id,status,suspended_until,dob,department,contact_number,dp FROM staff WHERE staff_id=? AND password=? AND role=?',[staff_id,password,role],(err,user)=>{
-    if(err)return res.status(500).json({error:err.message}); if(!user)return res.status(401).json({error:'Wrong Staff ID, password or role'});
+
+  // ============================= LOGIN =============================
+  // Passwords are stored as bcrypt hashes. Verify the entered password
+  // after finding the account by Staff ID and role.
+  get('SELECT id,role,name,staff_id,password,post,salary,location_code,parent_id,status,suspended_until,dob,department,contact_number,dp FROM staff WHERE staff_id=? AND role=?',[staff_id,role],async (err,user)=>{
+    if(err)return res.status(500).json({error:err.message});
+    if(!user)return res.status(401).json({error:'Wrong Staff ID, password or role'});
+
+    let passwordOk=false;
+    try { passwordOk=await bcrypt.compare(String(password),String(user.password)); } catch(e) { passwordOk=false; }
+
+    // Legacy plain-text passwords are migrated to bcrypt after a successful login.
+    if(!passwordOk && String(user.password)===String(password)){
+      passwordOk=true;
+      try { const hashed=await bcrypt.hash(String(password),12); db.run('UPDATE staff SET password=? WHERE id=?',[hashed,user.id],()=>{}); } catch(e) {}
+    }
+    if(!passwordOk)return res.status(401).json({error:'Wrong Staff ID, password or role'});
+    delete user.password;
     if(user.status==='suspended'&&user.suspended_until&&new Date(user.suspended_until)>new Date())return res.status(403).json({error:`Account suspended until ${new Date(user.suspended_until).toLocaleString()}`});
-    const redirect={admin:'admin.html',field_officer:'field-officer.html',supervisor:'supervisor.html',guard:'guard.html'}[role]; res.json({message:'Login successful',redirect,user});
+    const redirect={admin:'admin.html',field_officer:'field-officer.html',supervisor:'supervisor.html',guard:'guard.html'}[role];
+    audit({staff_id:user.staff_id,role:user.role},'LOGIN_SUCCESS',user.staff_id,'Successful login');
+    res.json({message:'Login successful',redirect,user});
   });
 });
 
 app.get('/api/stats',auth,(req,res)=>{const today=new Date().toISOString().slice(0,10); db.get(`SELECT (SELECT COUNT(*) FROM staff) staff,(SELECT COUNT(*) FROM attendance WHERE date=?) present,(SELECT COALESCE(SUM(amount),0) FROM fines) fine_total,(SELECT COALESCE(SUM(salary),0) FROM staff WHERE role='guard') salary_total`,[today],(err,row)=>err?res.status(500).json({error:err.message}):res.json(row));});
 app.get('/',(req,res)=>res.sendFile(path.join(frontendPath,'index.html')));
+
+// =====================================================
+// LOCATION MANAGEMENT
+// Admin can create, edit, delete and list locations.
+// GPS coordinates and allowed radius are stored in SQLite.
+// =====================================================
+db.run(`CREATE TABLE IF NOT EXISTS locations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  address TEXT DEFAULT '',
+  latitude REAL NOT NULL,
+  longitude REAL NOT NULL,
+  radius_meters INTEGER NOT NULL DEFAULT 200,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+)`);
+
+function adminOnly(req, res, next) {
+  const role = String(req.headers['x-role'] || '').toLowerCase();
+  if (role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  next();
+}
+
+app.get('/api/locations', (req, res) => {
+  db.all('SELECT * FROM locations ORDER BY code ASC', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/api/locations', adminOnly, (req, res) => {
+  const { code, name, address = '', latitude, longitude, radius_meters = 200 } = req.body || {};
+  const lat = Number(latitude), lng = Number(longitude), radius = Number(radius_meters);
+  if (!code || !name || !Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(radius) || radius <= 0) {
+    return res.status(400).json({ error: 'Code, name, latitude, longitude and valid radius are required' });
+  }
+  db.run(
+    `INSERT INTO locations (code,name,address,latitude,longitude,radius_meters)
+     VALUES (?,?,?,?,?,?)`,
+    [String(code).trim(), String(name).trim(), String(address).trim(), lat, lng, Math.round(radius)],
+    function(err) {
+      if (err) return res.status(400).json({ error: err.message });
+      res.json({ ok: true, id: this.lastID });
+    }
+  );
+});
+
+app.put('/api/locations/:id', adminOnly, (req, res) => {
+  const { code, name, address = '', latitude, longitude, radius_meters = 200, active = 1 } = req.body || {};
+  const lat = Number(latitude), lng = Number(longitude), radius = Number(radius_meters);
+  if (!code || !name || !Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(radius) || radius <= 0) {
+    return res.status(400).json({ error: 'Code, name, latitude, longitude and valid radius are required' });
+  }
+  db.run(
+    `UPDATE locations SET code=?,name=?,address=?,latitude=?,longitude=?,radius_meters=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+    [String(code).trim(), String(name).trim(), String(address).trim(), lat, lng, Math.round(radius), active ? 1 : 0, req.params.id],
+    function(err) {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!this.changes) return res.status(404).json({ error: 'Location not found' });
+      res.json({ ok: true });
+    }
+  );
+});
+
+app.delete('/api/locations/:id', adminOnly, (req, res) => {
+  db.run('DELETE FROM locations WHERE id=?', [req.params.id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!this.changes) return res.status(404).json({ error: 'Location not found' });
+    res.json({ ok: true });
+  });
+});
+
 app.listen(PORT,'0.0.0.0',()=>console.log(`SNDF backend running on port ${PORT}`));

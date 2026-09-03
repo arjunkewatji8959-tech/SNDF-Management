@@ -1,3 +1,7 @@
+/* =====================================================
+   SNDF MANAGEMENT | STYLE SECTIONS
+   File-level guide: keep each feature inside its marked section.
+   ===================================================== */
 
 /* SNDF Security Services - shared responsive stylesheet */
 :root{--navy:#08284f;--blue:#155bb2;--sky:#eef7ff;--line:#dbe8f5;--ink:#17283d;--muted:#6b7b8e;--white:#fff;--red:#e44747;--green:#198754;--shadow:0 12px 30px rgba(8,40,79,.12)}
@@ -141,4 +145,14 @@ html{overflow-x:hidden}body{overflow-x:hidden}.appbar{min-height:64px;height:aut
   .report-toolbar .action{width:100%}
   .report-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .report-stats .stat{min-width:0}
+}
+
+/* =====================================================
+   LOCATION MANAGEMENT BUTTON
+   Admin sidebar ke Location Management option ke liye.
+   ===================================================== */
+.sidebar .location-management-btn{
+  width:100%;
+  text-align:left;
+  cursor:pointer;
 }

@@ -1,3 +1,7 @@
+// =====================================================
+// SNDF MANAGEMENT | JAVASCRIPT SECTIONS
+// File-level guide: keep each feature inside its marked section.
+// =====================================================
 const roleSelect=document.getElementById('loginRole');
 const roleParam=new URLSearchParams(location.search).get('role');
 if(['admin','field_officer','supervisor','guard'].includes(roleParam)) roleSelect.value=roleParam;
