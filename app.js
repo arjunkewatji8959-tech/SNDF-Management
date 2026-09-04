@@ -17,7 +17,35 @@ function msg(t){const x=$('#status');if(x){x.textContent=t;x.style.display='bloc
 function escape(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 renderTopProfile();
 let staff=[];
-async function refresh(){try{const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;window._attendanceRows=a;const dl=$('#dailyLocationList');if(dl){const locations=[...new Set(s.map(x=>String(x.location_code||'').trim()).filter(Boolean))];dl.innerHTML=locations.map(v=>`<option value="${escape(v)}"></option>`).join('')}renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();if(role==='admin'){loadPayroll();loadReports();}}catch(e){console.log(e.message)}}
+async function refresh(){try{const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;window._attendanceRows=a;const dl=$('#dailyLocationList');if(dl){const locations=[...new Set(s.map(x=>String(x.location_code||'').trim()).filter(Boolean))];dl.innerHTML=locations.map(v=>`<option value="${escape(v)}"></option>`).join('')}renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();if(role!=='admin')loadTransferPoints();if(role==='admin'){loadPayroll();loadReports();}}catch(e){console.log(e.message)}}
+
+async function loadPointTransfers(){
+  const table=$('#pointTransferRows'), mine=$('#myTransferRows');
+  try{
+    const rows=await api('/point-transfers');
+    if(table){
+      table.innerHTML=rows.map(x=>`<tr><td>${escape(label(x.staff_role))}</td><td>${escape(x.staff_name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.from_location||'—')}</td><td>${escape(x.to_location)}</td><td>${escape(x.reason||'—')}</td><td><b>${escape(x.status)}</b></td><td>${escape(new Date(x.requested_at).toLocaleString())}</td><td>${x.status==='Pending'?`<button class="action success" onclick="approvePointTransfer(${x.id})">✓ Approve</button> <button class="action danger" onclick="rejectPointTransfer(${x.id})">✕ Reject</button>`:'—'}</td></tr>`).join('')||'<tr><td colspan="9">No point transfer requests.</td></tr>';
+    }
+    if(mine){
+      mine.innerHTML=rows.map(x=>`<div class="notice-item"><b>${escape(x.from_location||'—')} → ${escape(x.to_location)}</b><p>${escape(x.reason||'')}</p><small>Status: ${escape(x.status)} • ${new Date(x.requested_at).toLocaleString()}</small></div>`).join('')||'<p>No transfer requests.</p>';
+    }
+  }catch(e){console.log(e.message)}
+}
+async function loadTransferPoints(){
+  const sel=$('#transferPoint'); if(!sel)return;
+  try{
+    const rows=await fetch(API_URL+'/locations').then(r=>r.json());
+    const codes=[...new Set(rows.filter(x=>x.active!==0).map(x=>String(x.code||'').trim()).filter(Boolean))];
+    if(!codes.length)codes.push('LOC-01','LOC-02','LOC-03');
+    const current=String(user?.location_code||'');
+    sel.innerHTML='<option value="">Select Point</option>'+codes.filter(c=>c!==current).map(c=>`<option value="${escape(c)}">${escape(c)}</option>`).join('');
+    const cp=$('#currentPoint');if(cp)cp.textContent=current||'—';
+  }catch(e){sel.innerHTML='<option value="">Unable to load points</option>';}
+}
+async function approvePointTransfer(id){if(!confirm('Approve this point transfer?'))return;try{await api('/point-transfers/'+id+'/approve',{method:'PUT'});msg('Point transfer approved');refresh();loadPointTransfers();}catch(e){alert(e.message)}}
+async function rejectPointTransfer(id){if(!confirm('Reject this point transfer?'))return;try{await api('/point-transfers/'+id+'/reject',{method:'PUT'});msg('Point transfer rejected');loadPointTransfers();}catch(e){alert(e.message)}}
+window.approvePointTransfer=approvePointTransfer;window.rejectPointTransfer=rejectPointTransfer;
+
 function renderAttendance(rows){
  const head=$('#attendanceMatrixHead'), body=$('#attendanceMatrixRows');
  const detail=$('#attendanceDetailRows');
@@ -74,11 +102,11 @@ function renderDaily(rows){
  const d=$('#dailyDate')?.value||new Date().toISOString().slice(0,10);
  const loc=($('#dailyLocation')?.value||'').trim().toLowerCase();
  const list=rows.filter(x=>x.date===d).filter(x=>!loc||String(x.staff_location_code||x.location_code||'').toLowerCase()===loc||String(x.location||'').toLowerCase().includes(loc));
- b.innerHTML=list.map(x=>`<tr>
- <td>${label(x.role)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.name)}</td>
- <td>${escape(x.staff_location_code||x.location_code||'—')}</td><td>${escape(x.shift||'')}</td>
- <td>${escape(x.check_in||'')}</td><td>${escape(x.check_out||'')}</td><td>${x.hours_worked||0}</td>
- <td>${escape(x.attendance_status||'')}</td></tr>`).join('')||'<tr><td colspan="9">No attendance for selected date/location.</td></tr>';
+ b.innerHTML=list.map(x=>{
+  const photo=x.photo||'';
+  const photoCell=photo ? `<img class="attendance-photo-thumb" src="${escape(photo)}" alt="Live attendance photo" title="Open live attendance photo" onclick="openAttendancePhoto('${escape(photo)}')">` : '<span class="photo-missing">No photo</span>';
+  return `<tr><td>${photoCell}</td><td>${label(x.role)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.name)}</td><td>${escape(x.staff_location_code||x.location_code||'—')}</td><td>${escape(x.shift||'')}</td><td>${escape(x.check_in||'')}</td><td>${escape(x.check_out||'')}</td><td>${x.hours_worked||0}</td><td>${escape(x.attendance_status||'')}</td></tr>`;
+ }).join('')||'<tr><td colspan="10">No attendance for selected date/location.</td></tr>';
 }
 function renderStaff(list){
  const groups={field_officer:'#fieldOfficerRows',supervisor:'#supervisorRows',guard:'#guardRows'};
@@ -183,6 +211,7 @@ function downloadUrl(path,filename){
 
 fillAutoAttendance(); getLiveGPS(); startLiveCamera();
 $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(form));try{if(form.dataset.type==='staff')await api('/staff',{method:'POST',body:JSON.stringify(d)});if(form.dataset.type==='fine')await api('/fines',{method:'POST',body:JSON.stringify(d)});if(form.dataset.type==='advance')await api('/advances',{method:'POST',body:JSON.stringify(d)});if(form.dataset.type==='notice')await api('/notices',{method:'POST',body:JSON.stringify(d)});if(form.dataset.type==='help')await api('/help',{method:'POST',body:JSON.stringify(d)});msg('Saved successfully');form.reset();refresh()}catch(err){alert(err.message)}}));
+$('#pointTransferForm')?.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{await api('/point-transfers',{method:'POST',body:JSON.stringify(d)});msg('Point transfer request sent to Admin');e.target.reset();loadPointTransfers();}catch(err){alert(err.message)}});
 $('#profileForm')?.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{await api('/profile/me',{method:'PUT',body:JSON.stringify(d)});const fresh=await api('/profile/me');sessionStorage.setItem('sndfUser',JSON.stringify(fresh.user));msg('Profile updated');loadProfile()}catch(err){alert(err.message)}});
 $('#suspendForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/staff/'+$('#suspendStaff').value+'/suspend',{method:'PUT',body:JSON.stringify({hours:Number($('#suspendHours').value),reason:$('#suspendReason').value})});msg('ID suspended');refresh()}catch(err){alert(err.message)}});
 $('#downloadDaily')?.addEventListener('click',()=>{const d=$('#dailyDate')?.value||new Date().toISOString().slice(0,10);const loc=($('#dailyLocation')?.value||'').trim();downloadAttendance('',d,'',loc)});

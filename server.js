@@ -46,7 +46,7 @@ const columns = {
     ['dob','TEXT'],['department','TEXT'],['contact_number','TEXT'],['dp','TEXT']
   ],
   attendance: [['photo','TEXT'],['location','TEXT'],['shift','TEXT'],['check_in','TEXT'],['check_in_at','TEXT'],['check_out','TEXT'],['hours_worked','REAL DEFAULT 0'],['attendance_status','TEXT DEFAULT \'Present\'']],
-  fines: [], notices: [], help_requests: []
+  fines: [], notices: [], help_requests: [], point_transfer_requests: []
 };
 
 db.serialize(()=>{
@@ -89,6 +89,12 @@ db.serialize(()=>{
     id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT, staff_name TEXT, staff_role TEXT,
     reason TEXT, suspended_until TEXT, created_at TEXT
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS point_transfer_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT NOT NULL, staff_name TEXT NOT NULL, staff_role TEXT NOT NULL,
+    from_location TEXT, to_location TEXT NOT NULL, reason TEXT, status TEXT DEFAULT 'Pending',
+    requested_at TEXT NOT NULL, reviewed_at TEXT, reviewed_by TEXT
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS audit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT, actor_id TEXT, actor_role TEXT,
     action TEXT NOT NULL, target_id TEXT, details TEXT, created_at TEXT NOT NULL
@@ -436,6 +442,60 @@ app.post('/api/payments',auth,roles('admin'),(req,res)=>{
 app.get('/api/payments',auth,(req,res)=>{
   const sql=req.user.role==='admin'?'SELECT * FROM payments ORDER BY id DESC':'SELECT * FROM payments WHERE staff_id=? ORDER BY id DESC';
   all(sql,req.user.role==='admin'?[]:[req.user.staff_id],res);
+});
+
+
+// Point Transfer: Supervisor / Field Officer request; Admin approves and changes the assigned point.
+app.get('/api/point-transfers',auth,(req,res)=>{
+  const sql=req.user.role==='admin'
+    ? "SELECT * FROM point_transfer_requests ORDER BY CASE status WHEN 'Pending' THEN 0 ELSE 1 END, id DESC LIMIT 200"
+    : 'SELECT * FROM point_transfer_requests WHERE staff_id=? ORDER BY id DESC LIMIT 50';
+  all(sql,req.user.role==='admin'?[]:[req.user.staff_id],res);
+});
+app.post('/api/point-transfers',auth,roles('supervisor','field_officer'),(req,res)=>{
+  const to=String(req.body?.to_location||'').trim();
+  const reason=String(req.body?.reason||'').trim();
+  if(!to) return res.status(400).json({error:'Select the new point / Location Code'});
+  if(to===String(req.user.location_code||'')) return res.status(400).json({error:'New point must be different from current point'});
+  get('SELECT id FROM locations WHERE code=? AND active=1',[to],(e,loc)=>{
+    if(e) return res.status(500).json({error:e.message});
+    const allowed = loc || ['LOC-01','LOC-02','LOC-03'].includes(to);
+    if(!allowed) return res.status(400).json({error:'Invalid Location Code'});
+    get("SELECT id FROM point_transfer_requests WHERE staff_id=? AND status='Pending'",[req.user.staff_id],(pe,pending)=>{
+      if(pe)return res.status(500).json({error:pe.message});
+      if(pending)return res.status(409).json({error:'A point transfer request is already pending'});
+      run('INSERT INTO point_transfer_requests(staff_id,staff_name,staff_role,from_location,to_location,reason,status,requested_at) VALUES(?,?,?,?,?,?,?,?)',
+        [req.user.staff_id,req.user.name,req.user.role,req.user.location_code||'',to,reason,'Pending',new Date().toISOString()],res,row=>{
+          audit(req.user,'POINT_TRANSFER_REQUESTED',req.user.staff_id,`${req.user.location_code||''} -> ${to}`);
+          res.status(201).json({id:row.lastID,message:'Point transfer request sent to Admin'});
+        });
+    });
+  });
+});
+app.put('/api/point-transfers/:id/approve',auth,roles('admin'),(req,res)=>{
+  get("SELECT * FROM point_transfer_requests WHERE id=?",[req.params.id],(e,r)=>{
+    if(e)return res.status(500).json({error:e.message});
+    if(!r)return res.status(404).json({error:'Transfer request not found'});
+    if(r.status!=='Pending')return res.status(409).json({error:'Request already reviewed'});
+    db.serialize(()=>{
+      db.run("UPDATE staff SET location_code=? WHERE staff_id=? AND role IN ('field_officer','supervisor')",[r.to_location,r.staff_id],function(ue){
+        if(ue)return res.status(500).json({error:ue.message});
+        if(this.changes!==1)return res.status(404).json({error:'Staff member not found'});
+        db.run("UPDATE point_transfer_requests SET status='Approved',reviewed_at=?,reviewed_by=? WHERE id=?",[new Date().toISOString(),req.user.staff_id,r.id],(re)=>{
+          if(re)return res.status(500).json({error:re.message});
+          audit(req.user,'POINT_TRANSFER_APPROVED',r.staff_id,`${r.from_location||''} -> ${r.to_location}`);
+          res.json({message:'Point transfer approved',staff_id:r.staff_id,new_location:r.to_location});
+        });
+      });
+    });
+  });
+});
+app.put('/api/point-transfers/:id/reject',auth,roles('admin'),(req,res)=>{
+  get("SELECT * FROM point_transfer_requests WHERE id=?",[req.params.id],(e,r)=>{
+    if(e)return res.status(500).json({error:e.message}); if(!r)return res.status(404).json({error:'Transfer request not found'});
+    if(r.status!=='Pending')return res.status(409).json({error:'Request already reviewed'});
+    run("UPDATE point_transfer_requests SET status='Rejected',reviewed_at=?,reviewed_by=? WHERE id=?",[new Date().toISOString(),req.user.staff_id,r.id],res,()=>{audit(req.user,'POINT_TRANSFER_REJECTED',r.staff_id,r.to_location);res.json({message:'Point transfer rejected'});});
+  });
 });
 
 // Notice / Help.
