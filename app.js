@@ -19,45 +19,67 @@ renderTopProfile();
 let staff=[];
 async function refresh(){try{const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;window._attendanceRows=a;const dl=$('#dailyLocationList');if(dl){const locations=[...new Set(s.map(x=>String(x.location_code||'').trim()).filter(Boolean))];dl.innerHTML=locations.map(v=>`<option value="${escape(v)}"></option>`).join('')}renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();if(role==='admin'){loadPayroll();loadReports();}}catch(e){console.log(e.message)}}
 function renderAttendance(rows){
- const head=$('#attendanceMatrixHead'), body=$('#attendanceMatrixRows'); if(!head||!body)return;
+ const head=$('#attendanceMatrixHead'), body=$('#attendanceMatrixRows');
+ const detail=$('#attendanceDetailRows');
  const selectedRole=$('#attendanceRoleFilter')?.value||'all';
  const month=$('#attendanceMonth')?.value||new Date().toISOString().slice(0,7);
  const [yy,mm]=month.split('-').map(Number); const days=new Date(yy,mm,0).getDate();
  const filtered=rows.filter(a=>(selectedRole==='all'||a.role===selectedRole)&&String(a.date||'').startsWith(month));
- const map=new Map(); filtered.forEach(a=>{if(!map.has(a.staff_id))map.set(a.staff_id,{name:a.name,staff_id:a.staff_id,days:{},p:0}); const x=map.get(a.staff_id); x.days[Number(String(a.date).slice(-2))]=a.attendance_status?.startsWith('Half Day')?'P':'P'; if(a.check_out)x.p+=a.attendance_status?.startsWith('Half Day')?0.5:1;});
- head.innerHTML='<tr><th>Name</th><th>ID</th>'+Array.from({length:days},(_,i)=>`<th>${i+1}</th>`).join('')+'<th>P Count</th></tr>';
- body.innerHTML=[...map.values()].map(x=>'<tr><td>'+escape(x.name)+'</td><td>'+escape(x.staff_id)+'</td>'+Array.from({length:days},(_,i)=>{const d=i+1;return `<td class="${x.days[d]?'present-cell':'absent-cell'}">${x.days[d]?'P':'A'}</td>`}).join('')+`<td><b>${x.p}</b></td></tr>`).join('')||'<tr><td colspan="40">No attendance found for selected month/role.</td></tr>';
- renderAttendancePhotos(rows, selectedRole, month);
-}
 
-/* Render the original live camera photo together with its attendance metadata for Admin. */
-function renderAttendancePhotos(rows, selectedRole, month){
- const body=$('#attendancePhotoRows'); if(!body)return;
- const filtered=rows.filter(a=>(selectedRole==='all'||a.role===selectedRole)&&String(a.date||'').startsWith(month));
- body.innerHTML=filtered.map(a=>{
-   const hasPhoto=String(a.photo||'').startsWith('data:image/');
-   const photo=hasPhoto
-     ? `<button class="attendance-photo-thumb" type="button" title="Open live attendance photo" onclick="viewAttendancePhoto('${escape(a.photo)}','${escape(a.name)}','${escape(a.staff_id)}','${escape(a.date)}')"><img src="${escape(a.photo)}" alt="Live attendance photo"></button>`
-     : '<span class="muted-note">No photo</span>';
-   const photoData=hasPhoto
-     ? `<button class="action" type="button" onclick="viewAttendancePhoto('${escape(a.photo)}','${escape(a.name)}','${escape(a.staff_id)}','${escape(a.date)}')">View Photo</button>`
-     : '<span class="muted-note">Not captured</span>';
-   return `<tr><td>${photo}</td><td>${escape(a.date)}</td><td>${label(a.role)}</td><td>${escape(a.staff_id)}</td><td>${escape(a.name)}</td><td>${escape(a.location||'—')}</td><td>${escape(a.shift||'—')}</td><td>${escape(a.check_in||'—')}</td><td>${escape(a.check_out||'—')}</td><td>${escape(a.hours_worked||0)}</td><td>${escape(a.attendance_status||'')}</td><td>${photoData}</td></tr>`;
- }).join('')||'<tr><td colspan="12">No live attendance photo records found for selected month/role.</td></tr>';
-}
+ // Monthly P/A matrix
+ if(head&&body){
+   const map=new Map();
+   filtered.forEach(a=>{
+     if(!map.has(a.staff_id))map.set(a.staff_id,{name:a.name,staff_id:a.staff_id,days:{},p:0});
+     const x=map.get(a.staff_id);
+     x.days[Number(String(a.date).slice(-2))]='P';
+     if(a.check_out)x.p+=a.attendance_status?.startsWith('Half Day')?0.5:1;
+   });
+   head.innerHTML='<tr><th>Name</th><th>ID</th>'+Array.from({length:days},(_,i)=>`<th>${i+1}</th>`).join('')+'<th>P Count</th></tr>';
+   body.innerHTML=[...map.values()].map(x=>'<tr><td>'+escape(x.name)+'</td><td>'+escape(x.staff_id)+'</td>'+Array.from({length:days},(_,i)=>{const d=i+1;return `<td class="${x.days[d]?'present-cell':'absent-cell'}">${x.days[d]?'P':'A'}</td>`}).join('')+`<td><b>${x.p}</b></td></tr>`).join('')||'<tr><td colspan="40">No attendance found for selected month/role.</td></tr>';
+ }
 
-/* Open a larger view of the live attendance photo for Admin verification. */
-function viewAttendancePhoto(photo,name,id,date){
- if(!String(photo||'').startsWith('data:image/'))return;
- const old=$('#attendancePhotoModal'); if(old)old.remove();
- const modal=document.createElement('div'); modal.id='attendancePhotoModal'; modal.className='attendance-photo-modal';
- modal.innerHTML=`<div class="attendance-photo-modal-card"><button class="attendance-photo-close" type="button" aria-label="Close">×</button><h3>Live Attendance Photo</h3><p><b>${escape(name)}</b> · ${escape(id)} · ${escape(date)}</p><img src="${escape(photo)}" alt="Live attendance photo"><div class="photo-modal-actions"><a class="action primary-action" href="${escape(photo)}" target="_blank" rel="noopener">Open Photo</a></div></div>`;
- document.body.appendChild(modal);
- modal.addEventListener('click',e=>{if(e.target===modal||e.target.closest('.attendance-photo-close'))modal.remove();});
+ // Detailed saved attendance records, including submitted live photo.
+ if(detail){
+   detail.innerHTML=filtered.map(a=>{
+     const photo=a.photo||'';
+     const photoCell=photo
+       ? `<img class="attendance-photo-thumb" src="${escape(photo)}" alt="Live attendance photo" title="Open live attendance photo" onclick="openAttendancePhoto('${escape(photo)}')">`
+       : '<span class="photo-missing">No photo</span>';
+     return `<tr>
+       <td>${photoCell}</td>
+       <td><b>${escape(a.name)}</b></td>
+       <td>${escape(a.staff_id)}</td>
+       <td>${escape(label(a.role))}</td>
+       <td>${escape(a.staff_location_code||a.location_code||'—')}</td>
+       <td>${escape(a.location||'—')}</td>
+       <td>${escape(a.shift||'—')}</td>
+       <td>${escape(a.check_in||'—')}</td>
+       <td>${escape(a.check_out||'—')}</td>
+       <td>${escape(a.hours_worked||0)}</td>
+       <td>${escape(a.attendance_status||'—')}</td>
+     </tr>`;
+   }).join('')||'<tr><td colspan="11">No attendance details found for selected month/role.</td></tr>';
+ }
 }
+function openAttendancePhoto(src){
+ const w=window.open('','_blank','width=700,height=800');
+ if(w)w.document.write(`<title>SNDF Live Attendance Photo</title><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center"><img src="${src}" style="max-width:100%;max-height:100vh;object-fit:contain"></body>`);
+}
+window.openAttendancePhoto=openAttendancePhoto;
 function renderFines(rows){const b=$('#fineRows');if(!b)return;b.innerHTML=rows.map(x=>`<tr><td>${escape(x.guard_id)}</td><td>${escape(x.reason)}</td><td>₹${x.amount}</td><td>${escape(x.issued_by)}</td><td>${new Date(x.created_at).toLocaleDateString()}</td></tr>`).join('')||'<tr><td colspan="5">No fines.</td></tr>'}
 function renderAccount(a){const b=$('#accountSummary');if(b&&a)b.textContent='Contact '+(a.staff?.contact_number||'—')+' • Salary ₹'+(a.staff?.salary||0)+' • Fine ₹'+(a.fine||0)+' • Advance ₹'+(a.advance||0)+' • Remaining ₹'+(a.total_remaining||0)}
-function renderDaily(rows){const b=$('#dailyRows');if(!b)return;const d=$('#dailyDate')?.value||new Date().toISOString().slice(0,10);b.innerHTML=rows.filter(x=>x.date===d).map(x=>`<tr><td>${label(x.role)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.name)}</td><td>${escape(x.shift||'')}</td><td>${escape(x.check_in||'')}</td><td>${escape(x.check_out||'')}</td><td>${x.hours_worked||0}</td><td>${escape(x.attendance_status||'')}</td></tr>`).join('')||'<tr><td colspan="8">No attendance for selected date.</td></tr>'}
+function renderDaily(rows){
+ const b=$('#dailyRows');if(!b)return;
+ const d=$('#dailyDate')?.value||new Date().toISOString().slice(0,10);
+ const loc=($('#dailyLocation')?.value||'').trim().toLowerCase();
+ const list=rows.filter(x=>x.date===d).filter(x=>!loc||String(x.staff_location_code||x.location_code||'').toLowerCase()===loc||String(x.location||'').toLowerCase().includes(loc));
+ b.innerHTML=list.map(x=>`<tr>
+ <td>${label(x.role)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.name)}</td>
+ <td>${escape(x.staff_location_code||x.location_code||'—')}</td><td>${escape(x.shift||'')}</td>
+ <td>${escape(x.check_in||'')}</td><td>${escape(x.check_out||'')}</td><td>${x.hours_worked||0}</td>
+ <td>${escape(x.attendance_status||'')}</td></tr>`).join('')||'<tr><td colspan="9">No attendance for selected date/location.</td></tr>';
+}
 function renderStaff(list){
  const groups={field_officer:'#fieldOfficerRows',supervisor:'#supervisorRows',guard:'#guardRows'};
  Object.entries(groups).forEach(([r,sel])=>{const b=$(sel);if(!b)return;let rows=list.filter(x=>x.role===r);if(role!=='admin')rows=rows.filter(x=>x.staff_id===user.staff_id);b.innerHTML=rows.map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.post||label(x.role))}</td><td>${escape(x.department||'')}</td><td>₹${Number(x.salary||0)}</td><td>${escape(x.status||'active')}</td><td>${role==='admin'?`<button class="action danger" onclick="removeStaff(${x.id})">Delete</button>`:'View Only'}</td></tr>`).join('')||'<tr><td colspan="7">No members found.</td></tr>';});

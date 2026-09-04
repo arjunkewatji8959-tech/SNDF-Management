@@ -307,9 +307,15 @@ const SHIFT_SCHEDULES = {
   'Night Shift': { start: '20:00', end: '08:00', targetHours: 12, halfDayThreshold: 8 }
 };
 app.get('/api/attendance',auth,(req,res)=>{
+  // Admin gets the complete attendance record, including the staff Location Code
+  // and the live photo captured at Check In. Other roles see only their own records.
   const sql=req.user.role==='admin'
-    ? 'SELECT a.*,s.role FROM attendance a LEFT JOIN staff s ON s.staff_id=a.staff_id ORDER BY a.id DESC'
-    : 'SELECT a.*,s.role FROM attendance a LEFT JOIN staff s ON s.staff_id=a.staff_id WHERE a.staff_id=? ORDER BY a.id DESC';
+    ? `SELECT a.*,s.role,s.location_code AS staff_location_code
+       FROM attendance a LEFT JOIN staff s ON s.staff_id=a.staff_id
+       ORDER BY a.id DESC`
+    : `SELECT a.*,s.role,s.location_code AS staff_location_code
+       FROM attendance a LEFT JOIN staff s ON s.staff_id=a.staff_id
+       WHERE a.staff_id=? ORDER BY a.id DESC`;
   all(sql,req.user.role==='admin'?[]:[req.user.staff_id],res);
 });
 app.post('/api/attendance',auth,(req,res)=>{

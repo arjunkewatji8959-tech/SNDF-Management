@@ -157,13 +157,8 @@ html{overflow-x:hidden}body{overflow-x:hidden}.appbar{min-height:64px;height:aut
   cursor:pointer;
 }
 
-/* Admin attendance live-photo table and verification modal. */
-.attendance-photo-table{min-width:1500px}
-.attendance-photo-thumb{width:64px;height:64px;padding:0;border:1px solid rgba(0,210,255,.35);border-radius:10px;background:transparent;overflow:hidden;cursor:pointer}
-.attendance-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.attendance-photo-modal{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:20px}
-.attendance-photo-modal-card{position:relative;width:min(620px,96vw);max-height:92vh;overflow:auto;background:#07111f;border:1px solid rgba(0,210,255,.3);border-radius:18px;padding:20px;box-shadow:0 25px 80px rgba(0,0,0,.55)}
-.attendance-photo-modal-card h3{margin:0 0 5px}.attendance-photo-modal-card p{color:var(--muted);margin:0 0 14px}
-.attendance-photo-modal-card img{display:block;width:100%;max-height:65vh;object-fit:contain;background:#000;border-radius:12px}
-.attendance-photo-close{position:absolute;right:12px;top:10px;width:38px;height:38px;border:0;border-radius:50%;font-size:26px;cursor:pointer;background:rgba(255,255,255,.1);color:#fff}
-.photo-modal-actions{margin-top:14px;display:flex;justify-content:flex-end}
+/* Attendance live-photo details */
+.attendance-detail-wrap{overflow-x:auto}
+.attendance-detail-table{min-width:1250px}
+.attendance-photo-thumb{width:58px;height:58px;border-radius:10px;object-fit:cover;display:block;cursor:pointer;border:1px solid #d8e1ee}
+.photo-missing{font-size:12px;opacity:.65}

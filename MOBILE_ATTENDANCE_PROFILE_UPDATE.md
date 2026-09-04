@@ -25,3 +25,10 @@ Fresh database defaults to:
 - Password: adi2026
 
 For production, set `ADMIN_ID`, `ADMIN_PASSWORD`, and `ADMIN_NAME` in Railway Variables before launch.
+
+
+## Admin Attendance Detail Update
+- Admin Attendance page now shows saved attendance details for Field Officer, Supervisor and Guard.
+- Each submitted record includes Name, Staff ID, Role, Staff Location Code, submitted GPS/location text, Shift, Check In, Check Out, Hours, Status and the live camera photo.
+- Live attendance photo is stored with the attendance record and can be opened from the Admin Attendance table.
+- Location Code is read from the staff profile so it remains available even when the attendance location/GPS text changes.
