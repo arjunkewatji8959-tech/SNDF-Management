@@ -27,6 +27,33 @@ function renderAttendance(rows){
  const map=new Map(); filtered.forEach(a=>{if(!map.has(a.staff_id))map.set(a.staff_id,{name:a.name,staff_id:a.staff_id,days:{},p:0}); const x=map.get(a.staff_id); x.days[Number(String(a.date).slice(-2))]=a.attendance_status?.startsWith('Half Day')?'P':'P'; if(a.check_out)x.p+=a.attendance_status?.startsWith('Half Day')?0.5:1;});
  head.innerHTML='<tr><th>Name</th><th>ID</th>'+Array.from({length:days},(_,i)=>`<th>${i+1}</th>`).join('')+'<th>P Count</th></tr>';
  body.innerHTML=[...map.values()].map(x=>'<tr><td>'+escape(x.name)+'</td><td>'+escape(x.staff_id)+'</td>'+Array.from({length:days},(_,i)=>{const d=i+1;return `<td class="${x.days[d]?'present-cell':'absent-cell'}">${x.days[d]?'P':'A'}</td>`}).join('')+`<td><b>${x.p}</b></td></tr>`).join('')||'<tr><td colspan="40">No attendance found for selected month/role.</td></tr>';
+ renderAttendancePhotos(rows, selectedRole, month);
+}
+
+/* Render the original live camera photo together with its attendance metadata for Admin. */
+function renderAttendancePhotos(rows, selectedRole, month){
+ const body=$('#attendancePhotoRows'); if(!body)return;
+ const filtered=rows.filter(a=>(selectedRole==='all'||a.role===selectedRole)&&String(a.date||'').startsWith(month));
+ body.innerHTML=filtered.map(a=>{
+   const hasPhoto=String(a.photo||'').startsWith('data:image/');
+   const photo=hasPhoto
+     ? `<button class="attendance-photo-thumb" type="button" title="Open live attendance photo" onclick="viewAttendancePhoto('${escape(a.photo)}','${escape(a.name)}','${escape(a.staff_id)}','${escape(a.date)}')"><img src="${escape(a.photo)}" alt="Live attendance photo"></button>`
+     : '<span class="muted-note">No photo</span>';
+   const photoData=hasPhoto
+     ? `<button class="action" type="button" onclick="viewAttendancePhoto('${escape(a.photo)}','${escape(a.name)}','${escape(a.staff_id)}','${escape(a.date)}')">View Photo</button>`
+     : '<span class="muted-note">Not captured</span>';
+   return `<tr><td>${photo}</td><td>${escape(a.date)}</td><td>${label(a.role)}</td><td>${escape(a.staff_id)}</td><td>${escape(a.name)}</td><td>${escape(a.location||'—')}</td><td>${escape(a.shift||'—')}</td><td>${escape(a.check_in||'—')}</td><td>${escape(a.check_out||'—')}</td><td>${escape(a.hours_worked||0)}</td><td>${escape(a.attendance_status||'')}</td><td>${photoData}</td></tr>`;
+ }).join('')||'<tr><td colspan="12">No live attendance photo records found for selected month/role.</td></tr>';
+}
+
+/* Open a larger view of the live attendance photo for Admin verification. */
+function viewAttendancePhoto(photo,name,id,date){
+ if(!String(photo||'').startsWith('data:image/'))return;
+ const old=$('#attendancePhotoModal'); if(old)old.remove();
+ const modal=document.createElement('div'); modal.id='attendancePhotoModal'; modal.className='attendance-photo-modal';
+ modal.innerHTML=`<div class="attendance-photo-modal-card"><button class="attendance-photo-close" type="button" aria-label="Close">×</button><h3>Live Attendance Photo</h3><p><b>${escape(name)}</b> · ${escape(id)} · ${escape(date)}</p><img src="${escape(photo)}" alt="Live attendance photo"><div class="photo-modal-actions"><a class="action primary-action" href="${escape(photo)}" target="_blank" rel="noopener">Open Photo</a></div></div>`;
+ document.body.appendChild(modal);
+ modal.addEventListener('click',e=>{if(e.target===modal||e.target.closest('.attendance-photo-close'))modal.remove();});
 }
 function renderFines(rows){const b=$('#fineRows');if(!b)return;b.innerHTML=rows.map(x=>`<tr><td>${escape(x.guard_id)}</td><td>${escape(x.reason)}</td><td>₹${x.amount}</td><td>${escape(x.issued_by)}</td><td>${new Date(x.created_at).toLocaleDateString()}</td></tr>`).join('')||'<tr><td colspan="5">No fines.</td></tr>'}
 function renderAccount(a){const b=$('#accountSummary');if(b&&a)b.textContent='Contact '+(a.staff?.contact_number||'—')+' • Salary ₹'+(a.staff?.salary||0)+' • Fine ₹'+(a.fine||0)+' • Advance ₹'+(a.advance||0)+' • Remaining ₹'+(a.total_remaining||0)}
