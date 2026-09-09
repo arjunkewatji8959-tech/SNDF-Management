@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 5000;
 const frontendPath = __dirname;
 // Railway persistent storage: when a Volume is attached, Railway exposes its mount
 // path through RAILWAY_VOLUME_MOUNT_PATH. Locally, the database stays beside server.js.
-const dataDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.DB_DIR || __dirname;
+const dataDir = process.env.HOSTINGER_DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.DB_DIR || path.join(__dirname, 'data');
 fs.mkdirSync(dataDir, { recursive: true });
 const dbPath = path.join(dataDir, 'sndf.db');
 console.log(`SNDF SQLite database: ${dbPath}`);
@@ -903,16 +903,18 @@ app.get('/api/attendance/export',auth,roles('admin','master_admin'),(req,res)=>{
   const roleFilter=allowed.includes(wanted)?wanted:null;
   const dateFilter=req.query.date||'';
   const monthFilter=req.query.month||'';
+  const shiftFilter=['Day Shift','Night Shift'].includes(req.query.shift)?req.query.shift:'';
   let sql=`SELECT a.date,a.staff_id,a.name,s.role,s.location_code,a.shift,a.check_in,a.check_out,a.hours_worked,a.attendance_status,a.location FROM attendance a LEFT JOIN staff s ON s.staff_id=a.staff_id`;
   const params=[]; const where=[];
   if(roleFilter){where.push('s.role=?');params.push(roleFilter)}
   if(dateFilter){where.push('a.date=?');params.push(dateFilter)}
   if(monthFilter && /^\d{4}-\d{2}$/.test(monthFilter)){where.push('substr(a.date,1,7)=?');params.push(monthFilter)}
+  if(shiftFilter){where.push('a.shift=?');params.push(shiftFilter)}
   const locationFilter=String(req.query.location||'').trim();
   if(locationFilter){where.push('(LOWER(COALESCE(s.location_code,\'\'))=LOWER(?) OR LOWER(COALESCE(a.location,\'\')) LIKE LOWER(?))');params.push(locationFilter,'%'+locationFilter+'%')}
   if(where.length)sql+=' WHERE '+where.join(' AND ');
   sql+=' ORDER BY a.date DESC,a.id DESC';
-  all(sql,params,{json:x=>{ const rows=x; const header='Date,Staff ID,Name,Role,Location Code,Shift,Check In,Check Out,Hours,Status,Attendance Location'; const csv=[header,...rows.map(r=>[r.date,r.staff_id,r.name,r.role,r.location_code,r.shift,r.check_in,r.check_out,r.hours_worked,r.attendance_status,r.location].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\n'); res.setHeader('Content-Type','text/csv'); res.setHeader('Content-Disposition',`attachment; filename="${roleFilter||'all'}-${dateFilter||'all'}-attendance.csv"`); res.send(csv); }});
+  all(sql,params,{json:x=>{ const rows=x; const header='Date,Staff ID,Name,Role,Location Code,Shift,Check In,Check Out,Hours,Status,Attendance Location'; const csv=[header,...rows.map(r=>[r.date,r.staff_id,r.name,r.role,r.location_code,r.shift,r.check_in,r.check_out,r.hours_worked,r.attendance_status,r.location].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\n'); res.setHeader('Content-Type','text/csv'); res.setHeader('Content-Disposition',`attachment; filename="${roleFilter||'all'}-${dateFilter||monthFilter||'all'}-${shiftFilter?shiftFilter.toLowerCase().replace(/\s+/g,'-'):'all-shifts'}-attendance.csv"`); res.send(csv); }});
 });
 
 // FINES - Admin and Field Officer can issue fines to Guard or Supervisor. Others can view.

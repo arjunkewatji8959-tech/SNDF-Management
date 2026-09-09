@@ -1,0 +1,12 @@
+SNDF MANAGEMENT - HOSTINGER STARTUP
+
+Node.js version: 18+
+Startup file: server.js
+Start command: npm start
+Application type: Node.js Web App
+Database: SQLite file in ./data/sndf.db
+PORT: use process.env.PORT (already supported by server.js)
+
+IMPORTANT: Do NOT put this project in public_html as a normal static site.
+Create a Node.js Web App in Hostinger hPanel and set the Application Root to this folder.
+Run npm install, then restart the application.

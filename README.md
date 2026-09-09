@@ -42,3 +42,7 @@ This repository is prepared for GitHub. The runtime SQLite database is intention
 ## Important
 
 Do not commit `.env`, database files, passwords, tokens, or other secrets.
+
+
+## Hostinger
+See `HOSTINGER_DEPLOYMENT.md` for the Node.js Web App deployment steps. The app is configured to use `HOSTINGER_DATA_DIR` when provided, otherwise it stores SQLite data in the local `data/` folder.
