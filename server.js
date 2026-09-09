@@ -822,9 +822,16 @@ app.get('/api/staff/:id/profile-pdf',auth,roles('admin','master_admin'),(req,res
 // Full shift = 12 hours. Checkout before 8 hours is automatically Half Day.
 // Field Officer, Supervisor and Guard can mark/view ONLY their own attendance.
 const SHIFT_SCHEDULES = {
-  'Day Shift': { start: '08:00', end: '20:00', targetHours: 12, halfDayThreshold: 8 },
-  'Night Shift': { start: '20:00', end: '08:00', targetHours: 12, halfDayThreshold: 8 }
+  // 12-hour locations: 2 shifts
+  'Day Shift': { start: '08:00', end: '20:00', targetHours: 12, dutyHours: 12, halfDayThreshold: 8 },
+  'Night Shift': { start: '20:00', end: '08:00', targetHours: 12, dutyHours: 12, halfDayThreshold: 8 },
+  // 8-hour locations: 3 shifts
+  'Morning Shift': { start: '06:00', end: '14:00', targetHours: 8, dutyHours: 8 },
+  'Evening Shift': { start: '14:00', end: '22:00', targetHours: 8, dutyHours: 8 },
+  'Night Shift 8H': { start: '22:00', end: '06:00', targetHours: 8, dutyHours: 8 }
 };
+function shiftForDutyHours(hours){ return Number(hours)===8 ? ['Morning Shift','Evening Shift','Night Shift 8H'] : ['Day Shift','Night Shift']; }
+function isShiftAllowedForDuty(shift,hours){ return shiftForDutyHours(hours).includes(shift); }
 app.get('/api/attendance',auth,(req,res)=>{
   // Admin gets the complete attendance record, including the staff Location Code
   // and the live photo captured at Check In. Other roles see only their own records.
@@ -843,7 +850,11 @@ app.post('/api/attendance',auth,(req,res)=>{
   get('SELECT * FROM staff WHERE staff_id=?',[targetId],(err,s)=>{
     if(err)return res.status(500).json({error:err.message}); if(!s)return res.status(404).json({error:'Staff ID not found'});
     if(!['admin','master_admin'].includes(req.user.role) && s.staff_id!==req.user.staff_id)return res.status(403).json({error:'You can mark attendance only for yourself'});
-    const shift=SHIFT_SCHEDULES[x.shift]?x.shift:'Day Shift';
+    get('SELECT duty_hours FROM locations WHERE code=? AND active=1',[s.location_code],(le,loc)=>{
+    if(le)return res.status(500).json({error:le.message});
+    const dutyHours=Number(loc?.duty_hours)===8?8:12;
+    const shift=String(x.shift||'');
+    if(!isShiftAllowedForDuty(shift,dutyHours)) return res.status(400).json({error:`Invalid shift for ${dutyHours}-hour location. Allowed: ${shiftForDutyHours(dutyHours).join(', ')}`});
     checkGeofence(s.location_code,x.location||'',(ge,geo)=>{
     if(ge)return res.status(500).json({error:ge.message});
     if(geo.configured && !geo.allowed) return res.status(403).json({error:geo.error||`You are outside ${s.location_code} geofence (${geo.distance}m / ${geo.radius}m).`});
@@ -854,7 +865,7 @@ app.post('/api/attendance',auth,(req,res)=>{
       const schedule=SHIFT_SCHEDULES[shift];
       const [sh,sm]=schedule.start.split(':').map(Number);
       const start=new Date(now); start.setHours(sh,sm,0,0);
-      if(shift==='Night Shift' && now.getHours()<8) start.setDate(start.getDate()-1);
+      if((shift==='Night Shift' && now.getHours()<8) || (shift==='Night Shift 8H' && now.getHours()<6)) start.setDate(start.getDate()-1);
       const minutesLate=(now-start)/60000;
       if(minutesLate>30) return res.status(403).json({error:`Check-in closed: ${shift} check-in is allowed only within 30 minutes of ${schedule.start}.`});
       if(minutesLate < -30) return res.status(403).json({error:`Check-in opens at ${schedule.start} for ${shift}.`});
@@ -863,16 +874,15 @@ app.post('/api/attendance',auth,(req,res)=>{
     get('SELECT id,check_out FROM attendance WHERE staff_id=? AND check_out IS NULL ORDER BY id DESC LIMIT 1',[targetId],(ae,open)=>{
       if(ae)return res.status(500).json({error:ae.message});
       if(open)return res.status(409).json({error:'An attendance shift is already open. Please Check Out first.'});
-      get('SELECT id FROM attendance WHERE staff_id=? AND date=? ORDER BY id DESC LIMIT 1',[targetId,date],(de,existing)=>{
+      // One attendance record is allowed per shift, so 8-hour locations can have 3
+      // separate records on the same calendar date and 12-hour locations can have 2.
+      get('SELECT id FROM attendance WHERE staff_id=? AND date=? AND shift=? ORDER BY id DESC LIMIT 1',[targetId,date,shift],(de,existing)=>{
         if(de)return res.status(500).json({error:de.message});
-        if(existing)return res.status(409).json({error:'Today attendance is already completed'});
-        get('SELECT duty_hours FROM locations WHERE code=? AND active=1',[s.location_code],(le,loc)=>{
-          if(le)return res.status(500).json({error:le.message});
-          const dutyHours=Number(loc?.duty_hours)===8?8:12;
-          run('INSERT INTO attendance(staff_id,name,date,photo,location,shift,duty_hours,check_in,check_in_at,attendance_status) VALUES(?,?,?,?,?,?,?,?,?,?)',
-            [s.staff_id,s.name,date,x.photo||'',x.location||'',shift,dutyHours,time,iso,'Present - Shift Started'],res,row=>{audit(req.user,'ATTENDANCE_CHECKIN',s.staff_id,`${shift}; ${dutyHours} hour duty; location=${x.location||''}`);res.status(201).json({id:row.lastID,shift,shift_time:`${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end}`,duty_hours:dutyHours,message:`${shift} check-in saved (${dutyHours} hour duty)`});});
-        });
+        if(existing)return res.status(409).json({error:`${shift} attendance is already completed today`});
+        run('INSERT INTO attendance(staff_id,name,date,photo,location,shift,duty_hours,check_in,check_in_at,attendance_status) VALUES(?,?,?,?,?,?,?,?,?,?)',
+          [s.staff_id,s.name,date,x.photo||'',x.location||'',shift,dutyHours,time,iso,'Present - Shift Started'],res,row=>{audit(req.user,'ATTENDANCE_CHECKIN',s.staff_id,`${shift}; ${dutyHours} hour duty; location=${x.location||''}`);res.status(201).json({id:row.lastID,shift,shift_time:`${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end}`,duty_hours:dutyHours,message:`${shift} check-in saved (${dutyHours} hour duty)`});});
       });
+    });
     });
     });
   });
@@ -903,18 +913,20 @@ app.get('/api/attendance/export',auth,roles('admin','master_admin'),(req,res)=>{
   const roleFilter=allowed.includes(wanted)?wanted:null;
   const dateFilter=req.query.date||'';
   const monthFilter=req.query.month||'';
-  const shiftFilter=['Day Shift','Night Shift'].includes(req.query.shift)?req.query.shift:'';
   let sql=`SELECT a.date,a.staff_id,a.name,s.role,s.location_code,a.shift,a.check_in,a.check_out,a.hours_worked,a.attendance_status,a.location FROM attendance a LEFT JOIN staff s ON s.staff_id=a.staff_id`;
   const params=[]; const where=[];
   if(roleFilter){where.push('s.role=?');params.push(roleFilter)}
   if(dateFilter){where.push('a.date=?');params.push(dateFilter)}
   if(monthFilter && /^\d{4}-\d{2}$/.test(monthFilter)){where.push('substr(a.date,1,7)=?');params.push(monthFilter)}
-  if(shiftFilter){where.push('a.shift=?');params.push(shiftFilter)}
   const locationFilter=String(req.query.location||'').trim();
   if(locationFilter){where.push('(LOWER(COALESCE(s.location_code,\'\'))=LOWER(?) OR LOWER(COALESCE(a.location,\'\')) LIKE LOWER(?))');params.push(locationFilter,'%'+locationFilter+'%')}
+  const dutyFilter=String(req.query.duty_hours||'').trim();
+  if(dutyFilter==='8' || dutyFilter==='12'){where.push('a.duty_hours=?');params.push(Number(dutyFilter))}
+  const shiftFilter=String(req.query.shift||'').trim();
+  if(shiftFilter && shiftFilter!=='all'){where.push('a.shift=?');params.push(shiftFilter)}
   if(where.length)sql+=' WHERE '+where.join(' AND ');
   sql+=' ORDER BY a.date DESC,a.id DESC';
-  all(sql,params,{json:x=>{ const rows=x; const header='Date,Staff ID,Name,Role,Location Code,Shift,Check In,Check Out,Hours,Status,Attendance Location'; const csv=[header,...rows.map(r=>[r.date,r.staff_id,r.name,r.role,r.location_code,r.shift,r.check_in,r.check_out,r.hours_worked,r.attendance_status,r.location].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\n'); res.setHeader('Content-Type','text/csv'); res.setHeader('Content-Disposition',`attachment; filename="${roleFilter||'all'}-${dateFilter||monthFilter||'all'}-${shiftFilter?shiftFilter.toLowerCase().replace(/\s+/g,'-'):'all-shifts'}-attendance.csv"`); res.send(csv); }});
+  all(sql,params,{json:x=>{ const rows=x; const header='Date,Staff ID,Name,Role,Location Code,Duty Hours,Shift,Check In,Check Out,Hours,Status,Attendance Location'; const csv=[header,...rows.map(r=>[r.date,r.staff_id,r.name,r.role,r.location_code,r.duty_hours,r.shift,r.check_in,r.check_out,r.hours_worked,r.attendance_status,r.location].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\n'); res.setHeader('Content-Type','text/csv'); res.setHeader('Content-Disposition',`attachment; filename="${roleFilter||'all'}-${dateFilter||'all'}-attendance.csv"`); res.send(csv); }});
 });
 
 // FINES - Admin and Field Officer can issue fines to Guard or Supervisor. Others can view.

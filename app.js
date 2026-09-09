@@ -52,22 +52,24 @@ function renderAttendance(rows){
  const head=$('#attendanceMatrixHead'), body=$('#attendanceMatrixRows');
  const detail=$('#attendanceDetailRows');
  const selectedRole=$('#attendanceRoleFilter')?.value||'all';
- const selectedShift=$('#attendanceShiftFilter')?.value||'all';
  const month=$('#attendanceMonth')?.value||new Date().toISOString().slice(0,7);
+ const loc=$('#attendanceLocation')?.value||'all'; const duty=$('#attendanceDutyHours')?.value||'all'; const shift=$('#attendanceShift')?.value||'all';
  const [yy,mm]=month.split('-').map(Number); const days=new Date(yy,mm,0).getDate();
- const filtered=rows.filter(a=>(selectedRole==='all'||a.role===selectedRole)&&(selectedShift==='all'||a.shift===selectedShift)&&String(a.date||'').startsWith(month));
+ const filtered=rows.filter(a=>(selectedRole==='all'||a.role===selectedRole)&&String(a.date||'').startsWith(month)&&(loc==='all'||String(a.staff_location_code||a.location_code||'').toLowerCase()===loc.toLowerCase())&&(duty==='all'||String(a.duty_hours)===duty)&&(shift==='all'||a.shift===shift));
 
  // Monthly P/A matrix
  if(head&&body){
    const map=new Map();
    filtered.forEach(a=>{
-     if(!map.has(a.staff_id))map.set(a.staff_id,{name:a.name,staff_id:a.staff_id,days:{},p:0});
+     if(!map.has(a.staff_id))map.set(a.staff_id,{name:a.name,staff_id:a.staff_id,days:{},p:0,shifts:0});
      const x=map.get(a.staff_id);
-     x.days[Number(String(a.date).slice(-2))]='P';
-     if(a.check_out)x.p+=a.attendance_status?.startsWith('Half Day')?0.5:1;
+     const day=Number(String(a.date).slice(-2));
+     if(!x.days[day])x.days[day]=[];
+     x.days[day].push({shift:a.shift||'Shift',hours:a.hours_worked||0,status:a.attendance_status||''});
+     if(a.check_out){x.p+=a.attendance_status?.startsWith('Half Day')?0.5:1;x.shifts++;}
    });
-   head.innerHTML='<tr><th>Name</th><th>ID</th>'+Array.from({length:days},(_,i)=>`<th>${i+1}</th>`).join('')+'<th>P Count</th></tr>';
-   body.innerHTML=[...map.values()].map(x=>'<tr><td>'+escape(x.name)+'</td><td>'+escape(x.staff_id)+'</td>'+Array.from({length:days},(_,i)=>{const d=i+1;return `<td class="${x.days[d]?'present-cell':'absent-cell'}">${x.days[d]?'P':'A'}</td>`}).join('')+`<td><b>${x.p}</b></td></tr>`).join('')||'<tr><td colspan="40">No attendance found for selected month/role.</td></tr>';
+   head.innerHTML='<tr><th>Name</th><th>ID</th>'+Array.from({length:days},(_,i)=>`<th>${i+1}</th>`).join('')+'<th>Duty Count</th><th>Shift Count</th></tr>';
+   body.innerHTML=[...map.values()].map(x=>'<tr><td>'+escape(x.name)+'</td><td>'+escape(x.staff_id)+'</td>'+Array.from({length:days},(_,i)=>{const d=i+1,items=x.days[d]||[];if(!items.length)return '<td class="absent-cell">A</td>';const count=items.length;const labels=items.map(v=>String(v.shift).replace(' Shift','')).join(' + ');return `<td class="present-cell duplicate-attendance-cell" title="${escape(labels)}">${count>1?'P × '+count:'P'}${count>1?`<small class="shift-count-note">${escape(labels)}</small>`:''}</td>`}).join('')+`<td><b>${x.p}</b></td><td><b>${x.shifts}</b></td></tr>`).join('')||'<tr><td colspan="42">No attendance found for selected month/role.</td></tr>';
  }
 
  // Detailed saved attendance records, including submitted live photo.
@@ -104,8 +106,8 @@ function renderDaily(rows){
  const b=$('#dailyRows');if(!b)return;
  const d=$('#dailyDate')?.value||new Date().toISOString().slice(0,10);
  const loc=($('#dailyLocation')?.value||'').trim().toLowerCase();
- const shift=($('#dailyShiftFilter')?.value||'all');
- const list=rows.filter(x=>x.date===d).filter(x=>(shift==='all'||x.shift===shift)).filter(x=>!loc||String(x.staff_location_code||x.location_code||'').toLowerCase()===loc||String(x.location||'').toLowerCase().includes(loc));
+ const duty=$('#dailyDutyHours')?.value||'all'; const shift=$('#dailyShift')?.value||'all';
+ const list=rows.filter(x=>x.date===d).filter(x=>(!loc||String(x.staff_location_code||x.location_code||'').toLowerCase()===loc||String(x.location||'').toLowerCase().includes(loc))&&(duty==='all'||String(x.duty_hours)===duty)&&(shift==='all'||x.shift===shift));
  b.innerHTML=list.map(x=>{
   const photo=x.photo||'';
   const photoCell=photo ? `<img class="attendance-photo-thumb" src="${escape(photo)}" alt="Live attendance photo" title="Open live attendance photo" onclick="openAttendancePhoto('${escape(photo)}')">` : '<span class="photo-missing">No photo</span>';
@@ -169,7 +171,7 @@ async function loadProfile(){
 }
 async function loadNotices(){const b=$('#noticeRows');if(!b)return;try{const rows=await api('/notices');const mine=rows.filter(n=>n.to_role===role||n.to_role==='all'||n.from_role===role);b.innerHTML=mine.map(n=>`<div class="notice-item"><b>${label(n.from_role)} → ${label(n.to_role)}</b><p>${escape(n.message)}</p><small>${new Date(n.created_at).toLocaleString()}</small></div>`).join('')||'<p>No notices.</p>'}catch(e){}}
 async function loadHelp(){const b=$('#helpRows');if(!b)return;try{const rows=await api('/help');b.innerHTML=rows.map(n=>`<div class="notice-item"><b>${label(n.from_role)}</b><p>${escape(n.message)}</p><small>${new Date(n.created_at).toLocaleString()}</small></div>`).join('')||'<p>No help records.</p>'}catch(e){}}
-function downloadAttendance(r,date='',month='',location='',shift=''){const qs=new URLSearchParams();if(r)qs.set('role',r);if(date)qs.set('date',date);if(month)qs.set('month',month);if(location)qs.set('location',location);if(shift&&shift!=='all')qs.set('shift',shift);const u=API_URL+'/attendance/export?'+qs.toString();fetch(u,{headers:{'x-staff-id':user.staff_id,'x-role':user.role}}).then(async x=>{if(!x.ok){let d={};try{d=await x.json()}catch{}throw Error(d.error||'Download failed')}return x.blob()}).then(blob=>{const z=URL.createObjectURL(blob),a=document.createElement('a');a.href=z;a.download=(r||'all')+'-'+(date||month||'all')+'-'+(shift&&shift!=='all'?shift.toLowerCase().replace(/\s+/g,'-'):'all-shifts')+'-attendance.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(z)}).catch(e=>alert(e.message))}
+function downloadAttendance(r,date='',month='',location='',dutyHours='',shift='all'){const qs=new URLSearchParams();if(r&&r!=='all')qs.set('role',r);if(date)qs.set('date',date);if(month)qs.set('month',month);if(location&&location!=='all')qs.set('location',location);if(dutyHours&&dutyHours!=='all')qs.set('duty_hours',dutyHours);if(shift&&shift!=='all')qs.set('shift',shift);const u=API_URL+'/attendance/export?'+qs.toString();fetch(u,{headers:{'x-staff-id':user.staff_id,'x-role':user.role}}).then(async x=>{if(!x.ok){let d={};try{d=await x.json()}catch{}throw Error(d.error||'Download failed')}return x.blob()}).then(blob=>{const z=URL.createObjectURL(blob),a=document.createElement('a');a.href=z;a.download=(r||'all')+'-'+(date||month||'all')+'-attendance.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(z)}).catch(e=>alert(e.message))}
 async function checkout(id){try{const d=await api('/attendance/'+id+'/checkout',{method:'PUT'});msg(`${d.message}: ${d.hours_worked} hours`);refresh()}catch(e){alert(e.message)}}
 async function removeStaff(id){if(!confirm('Delete this member?'))return;try{await api('/staff/'+id,{method:'DELETE'});refresh()}catch(e){alert(e.message)}}
 window.checkout=checkout;window.removeStaff=removeStaff;window.downloadAttendance=downloadAttendance;window.makePayment=makePayment;
@@ -184,12 +186,17 @@ function populateLocationSelects(){
   const rel=$('#relieverLocation'); if(rel){const cur=rel.value;rel.innerHTML='<option value="">Select Location</option>'+options; if(rows.some(x=>x.code===cur))rel.value=cur;}
   const point=$('#pointUpdateLocationFilter'); if(point){const cur=point.value;point.innerHTML='<option value="all">All Locations</option>'+options; if(rows.some(x=>x.code===cur))point.value=cur;}
   const profile=$('#profileLocationFilter'); if(profile){const cur=profile.value;profile.innerHTML='<option value="all">All Locations</option>'+options; if(rows.some(x=>x.code===cur))profile.value=cur;}
+  const att=$('#attendanceLocation'); if(att){const cur=att.value;att.innerHTML='<option value="all">All Locations</option>'+options; if(rows.some(x=>x.code===cur))att.value=cur;}
   const daily=$('#dailyLocationList'); if(daily)daily.innerHTML=rows.map(x=>`<option value="${escape(x.code)}">${escape(x.name)}</option>`).join('');
 }
 
 function currentShift(){
-  const h=new Date().getHours();
-  if(h>=6&&h<8)return 'Morning Shift';
+  const h=new Date().getHours(), duty=currentDutyHours();
+  if(duty===8){
+    if(h>=6&&h<14)return 'Morning Shift';
+    if(h>=14&&h<22)return 'Evening Shift';
+    return 'Night Shift 8H';
+  }
   return h>=8&&h<20?'Day Shift':'Night Shift';
 }
 function fillAutoAttendance(){
@@ -285,9 +292,9 @@ $('#profileForm')?.addEventListener('submit',async e=>{
   }catch(err){alert(err.message)}
 });
 $('#suspendForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/staff/'+$('#suspendStaff').value+'/suspend',{method:'PUT',body:JSON.stringify({hours:Number($('#suspendHours').value),reason:$('#suspendReason').value})});msg('ID suspended');refresh()}catch(err){alert(err.message)}});
-$('#downloadDaily')?.addEventListener('click',()=>{const d=$('#dailyDate')?.value||new Date().toISOString().slice(0,10);const loc=($('#dailyLocation')?.value||'').trim();const shift=$('#dailyShiftFilter')?.value||'all';downloadAttendance('',d,'',loc,shift)});
-$('#downloadAttendanceMatrix')?.addEventListener('click',()=>{const m=$('#attendanceMonth')?.value||new Date().toISOString().slice(0,7);const shift=$('#attendanceShiftFilter')?.value||'all';downloadAttendance('', '', m,'',shift)});
-$('#attendanceMonth')?.addEventListener('change',()=>{if(isAdminRole)refresh()});$('#dailyDate')?.setAttribute('value',new Date().toISOString().slice(0,10));$('#attendanceMonth')?.setAttribute('value',new Date().toISOString().slice(0,7));$('#dailyDate')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));$('#dailyLocation')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#dailyShiftFilter')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));$('#attendanceShiftFilter')?.addEventListener('change',()=>{if(isAdminRole)renderAttendance(window._attendanceRows||[])});window.downloadAttendanceMonth=(r)=>{const m=$('#attendanceMonth')?.value;const shift=$('#attendanceShiftFilter')?.value||'all';if(!m)return alert('Select a month first');downloadAttendance(r,'',m,'',shift)};
+$('#downloadDaily')?.addEventListener('click',()=>{const d=$('#dailyDate')?.value||new Date().toISOString().slice(0,10);const loc=($('#dailyLocation')?.value||'').trim();const duty=$('#dailyDutyHours')?.value||'all';const shift=$('#dailyShift')?.value||'all';downloadAttendance('',d,'',loc,duty,shift)});
+$('#downloadAttendanceMatrix')?.addEventListener('click',()=>{const m=$('#attendanceMonth')?.value||new Date().toISOString().slice(0,7);const loc=$('#attendanceLocation')?.value||'all';const duty=$('#attendanceDutyHours')?.value||'all';const shift=$('#attendanceShift')?.value||'all';downloadAttendance('', '', m, loc,duty,shift)});
+$('#attendanceMonth')?.addEventListener('change',()=>{if(isAdminRole)refresh()});$('#dailyDate')?.setAttribute('value',new Date().toISOString().slice(0,10));$('#attendanceMonth')?.setAttribute('value',new Date().toISOString().slice(0,7));$('#dailyDate')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));$('#dailyLocation')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));window.downloadAttendanceMonth=(r)=>{const m=$('#attendanceMonth')?.value;if(!m)return alert('Select a month first');downloadAttendance(r,'',m)};
 $('form[data-type="staff"] select[name="role"]')?.addEventListener('change',()=>fillCreateParent(staff));
 $('#createLocation')?.addEventListener('change',()=>fillCreateParent(staff));
 $('#profileRoleFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
@@ -304,6 +311,9 @@ $('#downloadProfileUpdateSheet')?.addEventListener('click',()=>{
 });
 
 filterMemberLists();
+function updateShiftDropdown(id,dutyId){const sel=$(id), duty=$(dutyId)?.value||'all';if(!sel)return;const current=sel.value||'all';let opts=[['all','All Shifts']];if(duty==='8'||duty==='all'){opts.push(['Morning Shift','Morning Shift (8H)'],['Evening Shift','Evening Shift (8H)'],['Night Shift 8H','Night Shift (8H)']);}if(duty==='12'||duty==='all'){opts.push(['Day Shift','Day Shift (12H)'],['Night Shift','Night Shift (12H)']);}sel.innerHTML=opts.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');if(opts.some(x=>x[0]===current))sel.value=current;}
+function setupAttendanceFilters(){updateShiftDropdown('#attendanceShift','#attendanceDutyHours');updateShiftDropdown('#dailyShift','#dailyDutyHours');$('#attendanceDutyHours')?.addEventListener('change',()=>updateShiftDropdown('#attendanceShift','#attendanceDutyHours'));$('#dailyDutyHours')?.addEventListener('change',()=>updateShiftDropdown('#dailyShift','#dailyDutyHours'));$('#attendanceLocation')?.addEventListener('change',()=>renderAttendance(window._attendanceRows||[]));$('#attendanceDutyHours')?.addEventListener('change',()=>renderAttendance(window._attendanceRows||[]));$('#attendanceShift')?.addEventListener('change',()=>renderAttendance(window._attendanceRows||[]));$('#dailyDutyHours')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));$('#dailyShift')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));}
+setupAttendanceFilters();
 $('#attendanceRoleFilter')?.addEventListener('change',()=>renderAttendance(window._attendanceRows||[]));
 $('#accountRoleFilter')?.addEventListener('change',()=>loadPayroll());
 $('#memberRoleFilter')?.addEventListener('change',()=>filterMemberLists());$('#createRole')?.addEventListener('change',()=>{ if(!isAdminRole)return; });
