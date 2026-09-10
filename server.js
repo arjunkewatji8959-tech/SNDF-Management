@@ -579,13 +579,30 @@ app.post('/api/reliever-checkin',auth,roles('admin','master_admin'),(req,res)=>{
 // TEAM ATTENDANCE - Supervisor sees only guards assigned to them; Field Officer sees assigned supervisors/guards.
 app.get('/api/team-attendance',auth,roles('field_officer','officer','supervisor'),(req,res)=>{
   const parent=req.user.staff_id;
-  const condition=req.user.role==='supervisor'
-    ? `(s.parent_id=? OR s.reliever_parent_id=?) AND s.role='guard'`
-    : req.user.role==='officer'
-      ? `((s.role='supervisor' AND (s.parent_id=? OR s.reliever_parent_id=?)) OR (s.role='guard' AND (s.parent_id IN (SELECT staff_id FROM staff WHERE parent_id=?) OR s.reliever_parent_id IN (SELECT staff_id FROM staff WHERE parent_id=?))))`
-      : `(s.parent_id=? OR s.reliever_parent_id=?) AND s.role IN ('officer','supervisor','guard')`;
-  all(`SELECT a.*,s.role,s.location_code AS staff_location_code,s.parent_id,s.reliever_parent_id FROM attendance a
-       JOIN staff s ON s.staff_id=a.staff_id WHERE ${condition} ORDER BY a.date DESC,a.id DESC`,req.user.role==='officer'?[parent,parent,parent,parent]:[parent,parent],res);
+  let condition, params;
+  if(req.user.role==='supervisor'){
+    condition=`(s.parent_id=? OR s.reliever_parent_id=?) AND s.role='guard'`;
+    params=[parent,parent];
+  }else if(req.user.role==='officer'){
+    condition=`((s.role='supervisor' AND (s.parent_id=? OR s.reliever_parent_id=?))
+      OR (s.role='guard' AND (s.parent_id IN (SELECT staff_id FROM staff WHERE parent_id=?)
+      OR s.reliever_parent_id IN (SELECT staff_id FROM staff WHERE parent_id=?))))`;
+    params=[parent,parent,parent,parent];
+  }else{
+    // Field Officer sees the complete descendant chain: Officer -> Supervisor -> Guard.
+    condition=`s.staff_id IN (
+      WITH RECURSIVE descendants(staff_id) AS (
+        SELECT staff_id FROM staff WHERE parent_id=? OR reliever_parent_id=?
+        UNION
+        SELECT s2.staff_id FROM staff s2 JOIN descendants d
+          ON s2.parent_id=d.staff_id OR s2.reliever_parent_id=d.staff_id
+      ) SELECT staff_id FROM descendants
+    ) AND s.role IN ('officer','supervisor','guard')`;
+    params=[parent,parent];
+  }
+  all(`SELECT a.*,s.role,s.location_code AS staff_location_code,s.parent_id,s.reliever_parent_id
+       FROM attendance a JOIN staff s ON s.staff_id=a.staff_id
+       WHERE ${condition} ORDER BY a.date DESC,a.id DESC`,params,res);
 });
 
 

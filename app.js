@@ -475,18 +475,38 @@ $('#relieverForm')?.addEventListener('submit',async e=>{
   }catch(e){alert(e.message)}
 });
 async function loadTeamAttendance(){
-  if(!['supervisor','officer','field_officer'].includes(role)||!$('#teamDailyRows'))return;
+  if(!['supervisor','officer','field_officer'].includes(role))return;
   try{
     const rows=await api('/team-attendance'); window._teamAttendance=rows;
     const date=$('#teamAttendanceDate')?.value||new Date().toISOString().slice(0,10);
     const month=$('#teamAttendanceMonth')?.value||date.slice(0,7);
     const daily=rows.filter(x=>x.date===date);
-    $('#teamDailyRows').innerHTML=daily.map(x=>`<tr><td>${x.photo?`<img class="attendance-photo-thumb" src="${escape(x.photo)}" alt="Photo">`:'—'}</td><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.staff_location_code||x.location||'—')}</td><td>${escape(x.shift||'')}</td><td>${escape(x.check_in||'—')}</td><td>${escape(x.check_out||'—')}</td><td>${escape(x.hours_worked||0)}</td><td>${escape(x.attendance_status||'')}</td></tr>`).join('')||'<tr><td colspan="9">No guard attendance for selected date.</td></tr>';
+
+    // Field Officer: show today's Guard + Supervisor attendance directly on Home.
+    if(role==='field_officer' && $('#fieldOfficerTeamRows')){
+      const present=daily.filter(x=>(x.attendance_status||'Present')!=='Absent').length;
+      const checkedIn=daily.filter(x=>x.check_in && !x.check_out).length;
+      const sup=daily.filter(x=>x.role==='supervisor').length;
+      const guards=daily.filter(x=>x.role==='guard').length;
+      const summary=$('#fieldOfficerTeamSummary');
+      if(summary)summary.innerHTML=`<b>${daily.length}</b> attendance records today • <b>${guards}</b> Guards • <b>${sup}</b> Supervisors • <b>${checkedIn}</b> currently on duty`;
+      $('#fieldOfficerTeamRows').innerHTML=daily.map(x=>`<tr>
+        <td>${x.photo?`<img class="attendance-photo-thumb attendance-photo-clickable" data-attendance-photo="${escape(x.photo)}" src="${escape(x.photo)}" alt="Attendance Photo" title="View photo">`:'—'}</td>
+        <td>${escape(x.name||'—')}</td><td>${escape(x.staff_id||'—')}</td><td>${escape((x.role||'').replace('_',' ')||'—')}</td>
+        <td>${escape(x.staff_location_code||x.location||'—')}</td><td>${escape(x.shift||'—')}</td>
+        <td>${escape(x.check_in||'—')}</td><td>${escape(x.check_out||'—')}</td><td>${escape(x.attendance_status||'Present')}</td>
+      </tr>`).join('')||'<tr><td colspan="9">No Guard/Supervisor attendance for selected date.</td></tr>';
+    }
+
+    if($('#teamDailyRows')){
+      $('#teamDailyRows').innerHTML=daily.map(x=>`<tr><td>${x.photo?`<img class="attendance-photo-thumb attendance-photo-clickable" data-attendance-photo="${escape(x.photo)}" src="${escape(x.photo)}" alt="Photo">`:'—'}</td><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.staff_location_code||x.location||'—')}</td><td>${escape(x.shift||'')}</td><td>${escape(x.check_in||'—')}</td><td>${escape(x.check_out||'—')}</td><td>${escape(x.hours_worked||0)}</td><td>${escape(x.attendance_status||'')}</td></tr>`).join('')||'<tr><td colspan="9">No guard attendance for selected date.</td></tr>';
+    }
     const filtered=rows.filter(x=>String(x.date||'').startsWith(month)), map=new Map();
     filtered.forEach(x=>{if(!map.has(x.staff_id))map.set(x.staff_id,{name:x.name,staff_id:x.staff_id,days:{},p:0});let g=map.get(x.staff_id);g.days[Number(String(x.date).slice(-2))]='P';if(x.check_out)g.p+=x.attendance_status?.startsWith('Half Day') ? 0.5 : 1});
-    $('#teamMonthlyRows').innerHTML=[...map.values()].map(g=>`<tr><td>${escape(g.name)}</td><td>${escape(g.staff_id)}</td>${Array.from({length:31},(_,i)=>`<td>${g.days[i+1]||'A'}</td>`).join('')}<td><b>${g.p}</b></td></tr>`).join('')||'<tr><td colspan="34">No monthly attendance.</td></tr>';
+    if($('#teamMonthlyRows'))$('#teamMonthlyRows').innerHTML=[...map.values()].map(g=>`<tr><td>${escape(g.name)}</td><td>${escape(g.staff_id)}</td>${Array.from({length:31},(_,i)=>`<td>${g.days[i+1]||'A'}</td>`).join('')}<td><b>${g.p}</b></td></tr>`).join('')||'<tr><td colspan="34">No monthly attendance.</td></tr>';
   }catch(e){console.log(e.message)}
 }
+
 $('#teamAttendanceDate')?.addEventListener('change',loadTeamAttendance);
 $('#teamAttendanceMonth')?.addEventListener('change',loadTeamAttendance);
 // =====================================================

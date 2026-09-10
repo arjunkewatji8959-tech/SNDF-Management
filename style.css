@@ -297,3 +297,34 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #1976d2
  .sidebar button,.sidebar a{background:#e9f4ff;color:#315a78;border-color:#d4e8f7}
  .sidebar .active,.sidebar button.active{background:#d8ecff;color:#204c70}
 }
+
+/* SNDF FINAL UI: LIGHT BLUE BUTTONS + HOME DASHBOARD */
+button,.btn,.action,.nav-btn,.download-btn,.payment-done,.location-management-btn,
+input[type="button"],input[type="submit"]{
+  background:#d9efff !important;
+  color:#1f4f70 !important;
+  border:1px solid #b9dcf3 !important;
+  box-shadow:0 2px 6px rgba(55,130,180,.10);
+}
+button:hover,.btn:hover,.action:hover,.nav-btn:hover,.download-btn:hover,
+.payment-done:hover,.location-management-btn:hover,
+input[type="button"]:hover,input[type="submit"]:hover{
+  background:#c8e8fb !important;
+  color:#173f5d !important;
+}
+.sidebar button.active,.sidebar a.active,.sidebar .active{
+  background:#c5e7fb !important;
+  color:#173f5d !important;
+  border-color:#a9d5ef !important;
+}
+.field-officer-team-panel{grid-column:1/-1}
+.team-summary{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px;color:#315a78}
+.team-home-table{overflow-x:auto}
+.attendance-photo-clickable{cursor:zoom-in}
+.attendance-photo-clickable:hover{transform:scale(1.05);transition:.15s}
+@media(max-width:700px){
+  .field-officer-team-panel{overflow:hidden}
+  .team-home-table{font-size:12px}
+  button,.btn,.action,.nav-btn,.download-btn,.payment-done,.location-management-btn,
+  input[type="button"],input[type="submit"]{min-height:40px;border-radius:10px}
+}
