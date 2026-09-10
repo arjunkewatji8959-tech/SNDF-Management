@@ -204,3 +204,11 @@ html{overflow-x:hidden}body{overflow-x:hidden}.appbar{min-height:64px;height:aut
 input:focus,select:focus,textarea:focus{outline:none;border-color:#2469c2;box-shadow:0 0 0 3px rgba(36,105,194,.12)}
 .attendance-matrix tbody tr:hover,.daily-attendance-table tbody tr:hover,.attendance-detail-table tbody tr:hover,table tbody tr:hover{background:#f5f9fe}
 @media(max-width:600px){.action:hover,.btn:hover{transform:none}}
+
+/* SNDF interaction polish: clear hover/focus feedback across dashboard controls */
+.action, .sidebar button, .mobile-toggle, .site-links a { transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease, border-color .18s ease, color .18s ease; }
+.action:hover, .sidebar button:hover, .mobile-toggle:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0,0,0,.16); }
+.action:active, .sidebar button:active { transform: translateY(0); }
+.panel:hover { box-shadow: 0 12px 28px rgba(0,0,0,.10); border-color: rgba(25,118,210,.35); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: #1976d2; box-shadow: 0 0 0 3px rgba(25,118,210,.14); }
+@media (hover:none){ .action:hover, .sidebar button:hover, .mobile-toggle:hover, .panel:hover { transform:none; } }

@@ -310,7 +310,7 @@ app.get('/api/staff',auth,(req,res)=>{
 });
 // PROFILE UPDATE SHEET - Admin only. Exports current profile records as CSV.
 app.get('/api/profile-update-sheet',auth,roles('admin','master_admin'),(req,res)=>{
-  const allowed=['admin','field_officer','supervisor','guard'];
+  const allowed=['admin','field_officer','officer','supervisor','guard'];
   const role=String(req.query.role||'all');
   const location=String(req.query.location||'all');
   const params=[];
@@ -334,11 +334,13 @@ app.get('/api/profile-update-sheet',auth,roles('admin','master_admin'),(req,res)
   });
 });
 
-app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
+app.post('/api/staff',auth,roles('admin','master_admin','field_officer','officer','supervisor'),(req,res)=>{
   const x=req.body||{};
-  const role=['admin','field_officer','supervisor','guard'].includes(x.role)?x.role:null;
+  const role=['admin','field_officer','officer','supervisor','guard'].includes(x.role)?x.role:null;
   if(!role || !x.name || !x.staff_id || !x.password) return res.status(400).json({error:'Role, name, Staff ID and password are required'});
   if(role==='admin' && req.user.role!=='master_admin') return res.status(403).json({error:'Only Master Admin can create a new Admin'});
+  const createTargets={master_admin:['admin','field_officer','officer','supervisor','guard'],admin:['field_officer','officer','supervisor','guard'],field_officer:['officer'],officer:['supervisor'],supervisor:['guard'],guard:[]};
+  if(!createTargets[req.user.role]?.includes(role)) return res.status(403).json({error:`${req.user.role} cannot create ${role}`});
   if(role==='master_admin') return res.status(403).json({error:'Master Admin account is controlled by the system'});
   const location=String(x.location_code||'').trim(), parent=role==='admin' ? 'adi123' : String(x.parent_id||'').trim();
   const finish=()=>{
@@ -362,8 +364,9 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
     });
   };
   validateLocation(()=>{
-    if(role==='supervisor' && parent)return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{if(e)return res.status(500).json({error:e.message});if(!p||p.role!=='field_officer')return res.status(400).json({error:'Supervisor Parent ID must be a Field Officer ID'});finish();});
-    if(role==='guard' && parent)return get('SELECT role,location_code FROM staff WHERE staff_id=?',[parent],(e,p)=>{if(e)return res.status(500).json({error:e.message});if(!p||p.role!=='supervisor')return res.status(400).json({error:'Guard Parent ID must be a Supervisor ID'});if(p.location_code!==location)return res.status(400).json({error:'Guard location must match the Supervisor location'});finish();});
+    if(role==='officer')return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{if(e)return res.status(500).json({error:e.message});if(!p||p.role!=='field_officer')return res.status(400).json({error:'Officer Parent ID must be a Field Officer ID'});finish();});
+    if(role==='supervisor')return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{if(e)return res.status(500).json({error:e.message});if(!p||p.role!=='officer')return res.status(400).json({error:'Supervisor Parent ID must be an Officer ID'});finish();});
+    if(role==='guard')return get('SELECT role,location_code FROM staff WHERE staff_id=?',[parent],(e,p)=>{if(e)return res.status(500).json({error:e.message});if(!p||p.role!=='supervisor')return res.status(400).json({error:'Guard Parent ID must be a Supervisor ID'});if(p.location_code!==location)return res.status(400).json({error:'Guard location must match the Supervisor location'});finish();});
     finish();
   });
 });
@@ -377,7 +380,7 @@ app.put('/api/staff/:id/profile',auth,roles('admin','master_admin'),(req,res)=>{
     if(!s)return res.status(404).json({error:'Staff not found'});
     if(s.role==='master_admin')return res.status(403).json({error:'Master Admin profile is protected'});
     if(s.role==='admin' && req.user.role!=='master_admin')return res.status(403).json({error:'Only Master Admin can manage Admin profiles'});
-    const newRole=['field_officer','supervisor','guard'].includes(x.role)?x.role:s.role;
+    const newRole=['field_officer','officer','supervisor','guard'].includes(x.role)?x.role:s.role;
     const location=String(x.location_code||'').trim();
     const parent=String(x.parent_id||'').trim();
     const validateEditLocation=(next)=>{
@@ -390,12 +393,11 @@ app.put('/api/staff/:id/profile',auth,roles('admin','master_admin'),(req,res)=>{
       });
     };
     const continueEdit=()=>{
+    if(newRole==='officer' && parent){
+      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(pe,p)=>{ if(pe)return res.status(500).json({error:pe.message}); if(!p || p.role!=='field_officer')return res.status(400).json({error:'Officer Parent ID must be a Field Officer ID'}); save(); });
+    }
     if(newRole==='supervisor' && parent){
-      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(pe,p)=>{ 
-        if(pe)return res.status(500).json({error:pe.message});
-        if(!p || p.role!=='field_officer')return res.status(400).json({error:'Supervisor Parent ID must be a Field Officer ID'});
-        save();
-      });
+      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(pe,p)=>{ if(pe)return res.status(500).json({error:pe.message}); if(!p || p.role!=='officer')return res.status(400).json({error:'Supervisor Parent ID must be an Officer ID'}); save(); });
     }
     if(newRole==='guard' && parent){
       return get('SELECT role,location_code FROM staff WHERE staff_id=?',[parent],(pe,p)=>{
@@ -575,27 +577,30 @@ app.post('/api/reliever-checkin',auth,roles('admin','master_admin'),(req,res)=>{
 });
 
 // TEAM ATTENDANCE - Supervisor sees only guards assigned to them; Field Officer sees assigned supervisors/guards.
-app.get('/api/team-attendance',auth,roles('field_officer','supervisor'),(req,res)=>{
+app.get('/api/team-attendance',auth,roles('field_officer','officer','supervisor'),(req,res)=>{
   const parent=req.user.staff_id;
   const condition=req.user.role==='supervisor'
     ? `(s.parent_id=? OR s.reliever_parent_id=?) AND s.role='guard'`
-    : `(s.parent_id=? OR s.reliever_parent_id=?) AND s.role IN ('supervisor','guard')`;
+    : req.user.role==='officer'
+      ? `((s.role='supervisor' AND (s.parent_id=? OR s.reliever_parent_id=?)) OR (s.role='guard' AND (s.parent_id IN (SELECT staff_id FROM staff WHERE parent_id=?) OR s.reliever_parent_id IN (SELECT staff_id FROM staff WHERE parent_id=?))))`
+      : `(s.parent_id=? OR s.reliever_parent_id=?) AND s.role IN ('officer','supervisor','guard')`;
   all(`SELECT a.*,s.role,s.location_code AS staff_location_code,s.parent_id,s.reliever_parent_id FROM attendance a
-       JOIN staff s ON s.staff_id=a.staff_id WHERE ${condition} ORDER BY a.date DESC,a.id DESC`,[parent,parent],res);
+       JOIN staff s ON s.staff_id=a.staff_id WHERE ${condition} ORDER BY a.date DESC,a.id DESC`,req.user.role==='officer'?[parent,parent,parent,parent]:[parent,parent],res);
 });
 
 
 // =====================================================
 // TASK MANAGEMENT - role hierarchy
-// Master Admin -> Admin/Field Officer/Supervisor/Guard
-// Admin -> Field Officer/Supervisor/Guard
-// Field Officer -> Supervisor/Guard
-// Supervisor -> Guard
+// Master Admin -> Admin/Field Officer/Officer/Supervisor/Guard
+// Admin -> Field Officer/Officer/Supervisor/Guard
+// Field Officer -> Officer
+// Officer -> Supervisor; Supervisor -> Guard
 // =====================================================
 const TASK_TARGETS = {
-  master_admin:['admin','field_officer','supervisor','guard'],
-  admin:['field_officer','supervisor','guard'],
-  field_officer:['supervisor','guard'],
+  master_admin:['admin','field_officer','officer','supervisor','guard'],
+  admin:['field_officer','officer','supervisor','guard'],
+  field_officer:['officer'],
+  officer:['supervisor'],
   supervisor:['guard'],
   guard:[]
 };
@@ -634,7 +639,7 @@ app.post('/api/tasks',auth,(req,res)=>{
     }
   });
 });
-function labelRole(r){return ({master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r)}
+function labelRole(r){return ({master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r)}
 function taskAccess(task,user){
   return task && (task.assigned_to===user.staff_id || task.created_by===user.staff_id);
 }
@@ -952,7 +957,7 @@ app.put('/api/attendance/:id/checkout',auth,(req,res)=>{
 app.delete('/api/attendance/:id',auth,roles('admin','master_admin'),(req,res)=>run('DELETE FROM attendance WHERE id=?',[req.params.id],res,()=>res.json({message:'Attendance deleted'})));
 app.get('/api/attendance/export',auth,roles('admin','master_admin'),(req,res)=>{
   const wanted=req.query.role;
-  const allowed=['admin','field_officer','supervisor','guard'];
+  const allowed=['admin','field_officer','officer','supervisor','guard'];
   const roleFilter=allowed.includes(wanted)?wanted:null;
   const dateFilter=req.query.date||'';
   const monthFilter=req.query.month||'';
@@ -1014,7 +1019,7 @@ app.get('/api/account/payroll',auth,roles('admin','master_admin'),(req,res)=>{
       COALESCE((SELECT SUM(amount) FROM advances a WHERE a.staff_id=s.staff_id),0) advance,
       COALESCE((SELECT SUM(CASE WHEN attendance_status LIKE 'Half Day%' THEN 0.5 ELSE 1 END) FROM attendance at WHERE at.staff_id=s.staff_id AND at.check_out IS NOT NULL),0) duty_days,
       COALESCE((SELECT SUM(amount) FROM payments p WHERE p.staff_id=s.staff_id),0) paid
-      FROM staff s WHERE s.role IN ('field_officer','supervisor','guard') ORDER BY CASE s.role WHEN 'field_officer' THEN 1 WHEN 'supervisor' THEN 2 ELSE 3 END,s.id`,[],res);
+      FROM staff s WHERE s.role IN ('field_officer','officer','supervisor','guard') ORDER BY CASE s.role WHEN 'field_officer' THEN 1 WHEN 'supervisor' THEN 2 ELSE 3 END,s.id`,[],res);
 });
 
 app.post('/api/payments',auth,roles('admin','master_admin'),(req,res)=>{
@@ -1041,7 +1046,7 @@ app.get('/api/point-transfers',auth,(req,res)=>{
     : 'SELECT * FROM point_transfer_requests WHERE staff_id=? ORDER BY id DESC LIMIT 50';
   all(sql,['admin','master_admin'].includes(req.user.role)?[]:[req.user.staff_id],res);
 });
-app.post('/api/point-transfers',auth,roles('supervisor','field_officer'),(req,res)=>{
+app.post('/api/point-transfers',auth,roles('supervisor','officer','field_officer'),(req,res)=>{
   const to=String(req.body?.to_location||'').trim();
   const reason=String(req.body?.reason||'').trim();
   if(!to) return res.status(400).json({error:'Select the new point / Location Code'});
@@ -1067,7 +1072,7 @@ app.put('/api/point-transfers/:id/approve',auth,roles('admin','master_admin'),(r
     if(!r)return res.status(404).json({error:'Transfer request not found'});
     if(r.status!=='Pending')return res.status(409).json({error:'Request already reviewed'});
     db.serialize(()=>{
-      db.run("UPDATE staff SET location_code=? WHERE staff_id=? AND role IN ('field_officer','supervisor')",[r.to_location,r.staff_id],function(ue){
+      db.run("UPDATE staff SET location_code=? WHERE staff_id=? AND role IN ('field_officer','officer','supervisor')",[r.to_location,r.staff_id],function(ue){
         if(ue)return res.status(500).json({error:ue.message});
         if(this.changes!==1)return res.status(404).json({error:'Staff member not found'});
         db.run("UPDATE point_transfer_requests SET status='Approved',reviewed_at=?,reviewed_by=? WHERE id=?",[new Date().toISOString(),req.user.staff_id,r.id],(re)=>{
@@ -1130,13 +1135,13 @@ app.get('/api/reports/payroll/export',auth,roles('admin','master_admin'),(req,re
     COALESCE((SELECT SUM(amount) FROM fines f WHERE f.guard_id=s.staff_id AND substr(f.created_at,1,7)=?),0) fine,
     COALESCE((SELECT SUM(amount) FROM advances a WHERE a.staff_id=s.staff_id AND substr(a.created_at,1,7)=?),0) advance,
     COALESCE((SELECT SUM(amount) FROM payments p WHERE p.staff_id=s.staff_id AND substr(p.paid_at,1,7)=?),0) paid
-    FROM staff s WHERE s.role IN ('field_officer','supervisor','guard') ORDER BY s.role,s.staff_id`,[month,month,month],res);
+    FROM staff s WHERE s.role IN ('field_officer','officer','supervisor','guard') ORDER BY s.role,s.staff_id`,[month,month,month],res);
 });
 
 // Login supports exactly four roles.
 app.post('/api/login',(req,res)=>{
   const {staff_id,password,role}=req.body||{};
-  if(!staff_id||!password||!['master_admin','admin','field_officer','supervisor','guard'].includes(role))return res.status(400).json({error:'Select a valid login role, Staff ID and password'});
+  if(!staff_id||!password||!['master_admin','admin','field_officer','officer','supervisor','guard'].includes(role))return res.status(400).json({error:'Select a valid login role, Staff ID and password'});
 
   // ============================= LOGIN =============================
   // Passwords are stored as bcrypt hashes. Verify the entered password
@@ -1156,7 +1161,7 @@ app.post('/api/login',(req,res)=>{
     if(!passwordOk)return res.status(401).json({error:'Wrong Staff ID, password or role'});
     delete user.password;
     if(user.status==='suspended'&&user.suspended_until&&new Date(user.suspended_until)>new Date())return res.status(403).json({error:`Account suspended until ${new Date(user.suspended_until).toLocaleString()}`});
-    const redirect={master_admin:'admin.html',admin:'admin.html',field_officer:'field-officer.html',supervisor:'supervisor.html',guard:'guard.html'}[role];
+    const redirect={master_admin:'admin.html',admin:'admin.html',field_officer:'field-officer.html',officer:'officer.html',supervisor:'supervisor.html',guard:'guard.html'}[role];
     audit({staff_id:user.staff_id,role:user.role},'LOGIN_SUCCESS',user.staff_id,'Successful login');
     res.json({message:'Login successful',redirect,user});
   });

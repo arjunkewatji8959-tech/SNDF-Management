@@ -7,7 +7,7 @@ const user=JSON.parse(sessionStorage.getItem('sndfUser')||'null');
 const role=document.body.dataset.role;
 if(!user||!role||!(user.role===role || (role==='admin'&&user.role==='master_admin'))) location.replace('login.html?role='+encodeURIComponent(role||'admin'));
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
-function label(r){return {master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r}
+function label(r){return {master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r}
 const isAdminRole=['admin','master_admin'].includes(role);
 function renderTopProfile(u=user){const r=u?.role||role;$$('.app-user').forEach(x=>{const dp=u?.dp||'assets-logo.png';x.innerHTML=`<img class="app-avatar" src="${escape(dp)}" alt="Profile"><div class="app-user-text"><b>${escape(u?.name||'')}</b><small>${escape(u?.staff_id||'')} • ${label(r)}</small></div>`});['welcomeName','welcomeProfileName'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.name||label(r)});['welcomeId','welcomeProfileId'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.staff_id||''});['welcomeRole','welcomeProfileRole'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=label(r)});const wd=$('#welcomeDp');if(wd)wd.src=u?.dp||'assets-logo.png';}
 
@@ -20,7 +20,10 @@ renderTopProfile();
 const createRoleSelect=$('form[data-type="staff"] select[name="role"]');
 if(createRoleSelect && user?.role!=='master_admin') [...createRoleSelect.options].filter(o=>o.value==='admin').forEach(o=>o.remove());
 let staff=[];
-async function refresh(){try{await loadLocationConfigs(); populateLocationSelects(); fillAutoAttendance(); const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();}if(['supervisor','field_officer'].includes(role))loadTeamAttendance();}catch(e){console.log(e.message)}}
+async function refresh(){try{await loadLocationConfigs(); populateLocationSelects(); fillAutoAttendance(); const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;
+if(role==='field_officer'){const x=$('#createOfficerParent');if(x)x.value=user.staff_id;const l=$('#createOfficerLocation');if(l)l.value=user.location_code||'';const b=$('#myOfficerRows');if(b)b.innerHTML=staff.filter(x=>x.role==='officer'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Officers found.</td></tr>';}
+if(role==='officer'){const x=$('#createSupervisorParent');if(x)x.value=user.staff_id;const l=$('#createSupervisorLocation');if(l)l.value=user.location_code||'';const b=$('#mySupervisorRows');if(b)b.innerHTML=staff.filter(x=>x.role==='supervisor'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';}
+window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();}catch(e){console.log(e.message)}}
 
 async function loadPointTransfers(){
   const table=$('#pointTransferRows'), mine=$('#myTransferRows');
@@ -116,7 +119,7 @@ function renderDaily(rows){
  }).join('')||'<tr><td colspan="11">No attendance for selected date/location.</td></tr>';
 }
 function renderStaff(list){
- const groups={field_officer:'#fieldOfficerRows',supervisor:'#supervisorRows',guard:'#guardRows'};
+ const groups={field_officer:'#fieldOfficerRows',officer:'#officerRows',supervisor:'#supervisorRows',guard:'#guardRows'};
  Object.entries(groups).forEach(([r,sel])=>{const b=$(sel);if(!b)return;let rows=list.filter(x=>x.role===r);if(!isAdminRole)rows=rows.filter(x=>x.staff_id===user.staff_id);b.innerHTML=rows.map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.post||label(x.role))}</td><td>${escape(x.department||'')}</td><td>₹${Number(x.salary||0)}</td><td>${escape(x.status||'active')}</td><td>${isAdminRole?`<button class="action danger" onclick="removeStaff(${x.id})">Delete</button>`:'View Only'}</td></tr>`).join('')||'<tr><td colspan="7">No members found.</td></tr>';});
  const adminBox=$('#adminRows');if(adminBox){const admins=list.filter(x=>x.role==='admin');adminBox.innerHTML=admins.map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.post||'Admin')}</td><td>${escape(x.status||'active')}</td><td><button class="action danger" onclick="removeStaff(${x.id})">Delete</button></td></tr>`).join('')||'<tr><td colspan="5">No Admin accounts found.</td></tr>';$('#adminMemberPanel')?.classList.toggle('hidden',user?.role!=='master_admin');}
  const legacy=$('#staffRows');if(legacy)legacy.innerHTML='';
@@ -127,11 +130,12 @@ function fillCreateParent(list){
   if(!roleSel||!parentSel)return;
   const roleVal=roleSel.value, loc=locSel?.value||'';
   let parents=[];
-  if(roleVal==='supervisor')parents=list.filter(s=>s.role==='field_officer');
+  if(roleVal==='officer')parents=list.filter(s=>s.role==='field_officer');
+  if(roleVal==='supervisor')parents=list.filter(s=>s.role==='officer');
   if(roleVal==='guard')parents=list.filter(s=>s.role==='supervisor' && (!loc||s.location_code===loc));
   parentSel.innerHTML='<option value="">Parent ID</option>'+parents.map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${escape(s.staff_id)}${s.location_code?' • '+escape(s.location_code):''}</option>`).join('');
 }
-function fillAdvanceTargets(list){const sel=$('#advanceTarget');if(sel)sel.innerHTML='<option value="">Select Staff</option>'+list.filter(s=>['field_officer','supervisor','guard'].includes(s.role)).map(s=>`<option value="${s.staff_id}">${escape(s.name)} — ${s.staff_id} (${label(s.role)})</option>`).join('')}
+function fillAdvanceTargets(list){const sel=$('#advanceTarget');if(sel)sel.innerHTML='<option value="">Select Staff</option>'+list.filter(s=>['field_officer','officer','supervisor','guard'].includes(s.role)).map(s=>`<option value="${s.staff_id}">${escape(s.name)} — ${s.staff_id} (${label(s.role)})</option>`).join('')}
 async function loadPayroll(){try{const rows=await api('/account/payroll');const buckets={field_officer:'#fieldOfficerPayrollRows',supervisor:'#supervisorPayrollRows',guard:'#guardPayrollRows'};Object.entries(buckets).forEach(([r,sel])=>{const b=$(sel);if(!b)return;const list=rows.filter(s=>s.role===r);b.innerHTML=list.map(s=>{const payable=Math.max(0,Number(s.salary||0)-Number(s.fine||0)-Number(s.advance||0));const remaining=Math.max(0,payable-Number(s.paid||0));const paid=remaining<=0&&payable>0;return `<tr><td>${escape(s.name)}</td><td>${escape(s.staff_id)}</td><td>${escape(s.contact_number||'—')}</td><td>${escape(s.post||'')}</td><td>₹${s.salary||0}</td><td>${Number(s.duty_days||0)}</td><td>₹${s.fine||0}</td><td>₹${s.advance||0}</td><td>₹${s.paid||0}</td><td>₹${remaining}</td><td>${paid?'<button class="payment-done" disabled>✓ Paid</button>':`<button class="action success" onclick="makePayment('${s.staff_id}',${remaining})">Payment ₹${remaining}</button>`}</td></tr>`}).join('')||'<tr><td colspan="11">No staff payroll found.</td></tr>';const panel=document.querySelector(`[data-payroll-role="${r}"]`);const filter=$('#accountRoleFilter')?.value||'all';if(panel)panel.classList.toggle('hidden',filter!=='all'&&filter!==r)})}catch(e){console.log(e.message)}}
 
 async function makePayment(staffId,amount){if(!confirm(`Pay ₹${amount} to ${staffId}?`))return;try{await api('/payments',{method:'POST',body:JSON.stringify({staff_id:staffId,amount,note:'Admin salary payment'})});msg('Payment completed ✓');loadPayroll();refresh()}catch(e){alert(e.message)}}
@@ -139,7 +143,7 @@ function fillTargets(list){const sel=$('#fineTarget');if(sel)sel.innerHTML='<opt
 function renderProfileRecords(list){
   const b=$('#profileRecordRows'); if(!b||!isAdminRole)return;
   const rf=$('#profileRoleFilter')?.value||'all', lf=$('#profileLocationFilter')?.value||'all';
-  const rows=list.filter(s=>['admin','field_officer','supervisor','guard'].includes(s.role))
+  const rows=list.filter(s=>['admin','field_officer','officer','supervisor','guard'].includes(s.role))
     .filter(s=>rf==='all'||s.role===rf).filter(s=>lf==='all'||String(s.location_code||'')===lf);
   b.innerHTML=rows.map(s=>`<tr>
     <td><img class="profile-thumb" src="${escape(s.dp||s.photo_front||'assets-logo.png')}" alt="Profile"></td>
@@ -430,7 +434,7 @@ $('#relieverForm')?.addEventListener('submit',async e=>{
   }catch(e){alert(e.message)}
 });
 async function loadTeamAttendance(){
-  if(!['supervisor','field_officer'].includes(role)||!$('#teamDailyRows'))return;
+  if(!['supervisor','officer','field_officer'].includes(role)||!$('#teamDailyRows'))return;
   try{
     const rows=await api('/team-attendance'); window._teamAttendance=rows;
     const date=$('#teamAttendanceDate')?.value||new Date().toISOString().slice(0,10);
@@ -592,7 +596,7 @@ loadProfile();refresh();
 if($('#p_staff_id')) $('#p_staff_id').value=user.staff_id;
 if(!isAdminRole){ $('#staff')?.remove(); $('#advance')?.remove(); $('#suspend')?.remove(); $('#profile-records')?.remove(); }
 if(!isAdminRole) $$('[onclick^="downloadAttendance"]').forEach(b=>b.remove());
-if(!['admin','field_officer'].includes(role)) $('#fine')?.querySelector('.fine-form')?.remove();
+if(!['admin','field_officer','officer'].includes(role)) $('#fine')?.querySelector('.fine-form')?.remove();
 if(isAdminRole) $('#fine')?.querySelector('.fine-form')?.insertAdjacentHTML('afterend','<p>Admin may fine Guard or Supervisor.</p>');
 // Admin controls admin profile; Field Officer, Supervisor and Guard can submit their complete profile.
 if(role==='admin') ['name','post','salary','dob','department','location_code'].forEach(k=>$('#p_'+k)?.removeAttribute('disabled'));
