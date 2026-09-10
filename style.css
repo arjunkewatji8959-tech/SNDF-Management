@@ -615,3 +615,207 @@ button:active,
   z-index:3;
 }
 .sidebar .exit:hover{background:var(--btn-hover)!important;border-color:var(--btn-hover)!important;}
+
+
+/* ============================================================
+   SNDF FINAL DARK-BLUE POLISH | REQUESTED UI UPDATE
+   - No top sidebar profile/logout block
+   - Logout stays as the last normal sidebar button
+   - Wider mobile sidebar/menu buttons
+   - One consistent dark-blue button family
+   - Remove light-blue / glass / blur styling
+   - Larger Master Admin sidebar title
+   ============================================================ */
+:root{
+  --sndf-final:#0b3f73;
+  --sndf-final-hover:#0e568f;
+  --sndf-final-active:#123f70;
+  --sndf-final-border:#174f82;
+  --sndf-page:#ffffff;
+  --sndf-neutral-border:#d7dee8;
+}
+
+/* Clean page surface — no blue wash or glass blur */
+body{background:var(--sndf-page)!important;color:#17324f!important;}
+.dash-main{background:#fff!important;}
+.hero-profile{
+  background:#0b3f73!important;
+  border:1px solid #0b3f73!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  box-shadow:0 8px 20px rgba(11,63,115,.16)!important;
+}
+.dash-hero{
+  background:#fff!important;
+  border-color:var(--sndf-neutral-border)!important;
+  box-shadow:0 8px 20px rgba(18,50,79,.06)!important;
+}
+.dash-hero:after{display:none!important;}
+
+/* Larger role title in the left navigation */
+.side-label{
+  font-size:14px!important;
+  line-height:1.35!important;
+  letter-spacing:2px!important;
+  font-weight:800!important;
+  color:#fff!important;
+  padding:20px 18px 12px!important;
+}
+
+/* All buttons: same professional dark-blue family */
+button,
+.btn,
+.action,
+.nav-btn,
+.download-btn,
+.payment-done,
+.location-management-btn,
+.ghost-action,
+.btn-primary,
+.btn-outline,
+.btn-success,
+.btn-danger,
+.success,
+.danger,
+.primary,
+.outline,
+.login-button,
+input[type="button"],
+input[type="submit"]{
+  background:var(--sndf-final)!important;
+  color:#fff!important;
+  border:1px solid var(--sndf-final-border)!important;
+  box-shadow:0 4px 10px rgba(11,63,115,.14)!important;
+  filter:none!important;
+}
+button:hover,
+.btn:hover,
+.action:hover,
+.nav-btn:hover,
+.download-btn:hover,
+.payment-done:hover,
+.location-management-btn:hover,
+.ghost-action:hover,
+.btn-primary:hover,
+.btn-outline:hover,
+.btn-success:hover,
+.btn-danger:hover,
+.success:hover,
+.danger:hover,
+.primary:hover,
+.outline:hover,
+.login-button:hover,
+input[type="button"]:hover,
+input[type="submit"]:hover{
+  background:var(--sndf-final-hover)!important;
+  color:#fff!important;
+  border-color:var(--sndf-final-hover)!important;
+  transform:translateY(-2px)!important;
+  box-shadow:0 8px 18px rgba(11,63,115,.22)!important;
+}
+button:active,
+.btn:active,
+.action:active,
+.nav-btn:active,
+.download-btn:active,
+.payment-done:active,
+.location-management-btn:active,
+input[type="button"]:active,
+input[type="submit"]:active{
+  background:var(--sndf-final-active)!important;
+  transform:translateY(0)!important;
+  box-shadow:0 3px 7px rgba(11,63,115,.16)!important;
+}
+
+/* Sidebar: every item is a normal dark-blue button; logout remains last */
+.sidebar{
+  background:#082f57!important;
+  width:190px;
+  padding:10px 8px 18px!important;
+}
+.sidebar button[data-view],
+.sidebar .location-management-btn,
+.sidebar .exit{
+  width:100%!important;
+  min-height:48px!important;
+  margin:5px 0!important;
+  padding:13px 13px!important;
+  background:#0b3f73!important;
+  color:#fff!important;
+  border:1px solid rgba(255,255,255,.12)!important;
+  border-radius:10px!important;
+  font-weight:700!important;
+  box-shadow:0 3px 8px rgba(0,0,0,.12)!important;
+}
+.sidebar button[data-view]:hover,
+.sidebar .location-management-btn:hover,
+.sidebar .exit:hover,
+.sidebar button[data-view].active{
+  background:#0e568f!important;
+  color:#fff!important;
+  border-color:#2873ab!important;
+  box-shadow:0 7px 16px rgba(0,0,0,.18)!important;
+  transform:translateX(2px)!important;
+}
+.sidebar .exit{
+  margin-top:10px!important;
+  color:#fff!important;
+}
+
+/* Remove any old sidebar profile controls if present in cached/older markup */
+.sidebar-profile{display:none!important;}
+
+/* Remove all glass/blur effects from UI */
+.backdrop-filter,
+.glass,
+[class*="glass"]{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+
+/* Cards: clean white instead of pale blue */
+.panel,
+.stat,
+.premium-card,
+.premium-panel,
+.detail-card,
+.account-card,
+.notice-item{
+  background:#fff!important;
+  border-color:var(--sndf-neutral-border)!important;
+}
+
+/* Premium heading stays dark blue */
+.premium-overview h2,
+.dash-main h1,
+.dash-main h2,
+.dash-main h3{color:#0b3f73!important;}
+
+/* Mobile: wider sidebar and wider menu buttons */
+@media(max-width:850px){
+  .sidebar{
+    width:min(88vw,320px)!important;
+    left:-340px!important;
+    padding:12px 10px 22px!important;
+  }
+  .sidebar.open{left:0!important;}
+  .sidebar button[data-view],
+  .sidebar .location-management-btn,
+  .sidebar .exit{
+    width:100%!important;
+    min-height:52px!important;
+    padding:14px 16px!important;
+    margin:6px 0!important;
+    font-size:14px!important;
+    border-radius:11px!important;
+  }
+  .side-label{font-size:15px!important;padding:20px 16px 14px!important;}
+}
+@media(max-width:560px){
+  .sidebar{width:min(92vw,320px)!important;left:-340px!important;}
+  .sidebar button[data-view],
+  .sidebar .location-management-btn,
+  .sidebar .exit{min-height:54px!important;font-size:14px!important;}
+  .dash-main h1{font-size:24px!important;}
+}
+
+/* Make the Home profile card clearly tappable without glass styling */
+.hero-profile{cursor:pointer!important;}
+.hero-profile:hover{transform:translateY(-2px)!important;box-shadow:0 12px 24px rgba(11,63,115,.22)!important;}

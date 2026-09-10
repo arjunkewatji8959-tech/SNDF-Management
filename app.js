@@ -702,7 +702,7 @@ if(['guard','supervisor'].includes(role)){
   initWebPush();
   openPointCamera();getPointGPS();loadPointStatus();setInterval(loadPointStatus,60000);
 }
-$('#logout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser');location.href='index.html'});$('#topLogout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser');location.href='index.html'});
+$('#logout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser');location.href='index.html'});
 loadProfile();refresh();
 if($('#p_staff_id')) $('#p_staff_id').value=user.staff_id;
 if(!isAdminRole){ $('#staff')?.remove(); $('#advance')?.remove(); $('#suspend')?.remove(); $('#profile-records')?.remove(); }
