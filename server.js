@@ -1167,7 +1167,23 @@ app.post('/api/login',(req,res)=>{
   });
 });
 
-app.get('/api/stats',auth,(req,res)=>{const today=new Date().toISOString().slice(0,10); db.get(`SELECT (SELECT COUNT(*) FROM staff) staff,(SELECT COUNT(*) FROM attendance WHERE date=?) present,(SELECT COALESCE(SUM(amount),0) FROM fines) fine_total,(SELECT COALESCE(SUM(salary),0) FROM staff WHERE role='guard') salary_total`,[today],(err,row)=>err?res.status(500).json({error:err.message}):res.json(row));});
+app.get('/api/stats',auth,(req,res)=>{
+  const today=new Date().toISOString().slice(0,10);
+  const month=today.slice(0,7);
+  const sql=`SELECT
+    (SELECT COUNT(*) FROM staff WHERE status='active') staff,
+    (SELECT COUNT(*) FROM staff WHERE status='active' AND role='guard') total_guards,
+    (SELECT COUNT(DISTINCT staff_id) FROM attendance WHERE date=? AND (attendance_status='Present' OR attendance_status IS NULL)) present,
+    (SELECT COUNT(DISTINCT staff_id) FROM attendance WHERE date=? AND check_in IS NOT NULL AND check_out IS NULL AND (attendance_status='Present' OR attendance_status IS NULL)) on_duty,
+    (SELECT COUNT(*) FROM staff WHERE status='active' AND role='guard' AND staff_id NOT IN (SELECT DISTINCT staff_id FROM attendance WHERE date=? AND (attendance_status='Present' OR attendance_status IS NULL))) absent_guards,
+    (SELECT COUNT(*) FROM staff WHERE is_reliever=1 AND status='active') relievers,
+    (SELECT COUNT(*) FROM locations) active_sites,
+    (SELECT COALESCE(SUM(salary),0) FROM staff WHERE status='active' AND role IN ('guard','supervisor','officer','field_officer')) monthly_payroll,
+    (SELECT COALESCE(SUM(amount),0) FROM fines) fine_total,
+    (SELECT COALESCE(SUM(salary),0) FROM staff WHERE role='guard') salary_total
+  `;
+  db.get(sql,[today,today,today],(err,row)=>err?res.status(500).json({error:err.message}):res.json(row));
+});
 app.get('/',(req,res)=>res.sendFile(path.join(frontendPath,'index.html')));
 
 // =====================================================

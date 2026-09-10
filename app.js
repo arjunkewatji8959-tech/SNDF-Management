@@ -20,6 +20,47 @@ renderTopProfile();
 const createRoleSelect=$('form[data-type="staff"] select[name="role"]');
 if(createRoleSelect && user?.role!=='master_admin') [...createRoleSelect.options].filter(o=>o.value==='admin').forEach(o=>o.remove());
 let staff=[];
+
+async function loadPremiumDashboard(stats){
+  try{
+    const set=(id,v)=>{const x=$('#'+id);if(x)x.textContent=v??0};
+    set('premiumTotalGuards',stats.total_guards);
+    set('premiumOnDuty',stats.on_duty);
+    set('premiumAbsent',stats.absent_guards);
+    set('premiumRelievers',stats.relievers);
+    set('premiumActiveSites',stats.active_sites);
+    const payroll=Number(stats.monthly_payroll||0);
+    set('premiumPayroll','₹'+payroll.toLocaleString('en-IN'));
+    const present=Number(stats.present||0), absent=Number(stats.absent_guards||0), total=Math.max(1,present+absent);
+    set('chartPresentText',present); set('chartAbsentText',absent);
+    const pb=$('#chartPresentBar'), ab=$('#chartAbsentBar');
+    if(pb)pb.style.width=Math.min(100,present/total*100)+'%';
+    if(ab)ab.style.width=Math.min(100,absent/total*100)+'%';
+
+    const siteBox=$('#premiumSiteStatus');
+    if(siteBox){
+      const locs=await api('/locations');
+      siteBox.innerHTML=(locs||[]).slice(0,8).map(l=>`<div class="site-item"><strong>📍 ${escape(l.code||'Site')}</strong><span>${escape(l.name||'')} • Active</span></div>`).join('')||'<p class="muted-note">No active sites.</p>';
+    }
+    const act=$('#premiumRecentActivities');
+    if(act){
+      if(role==='admin'){
+        const logs=await api('/audit-logs?limit=6');
+        act.innerHTML=(logs||[]).slice(0,6).map(x=>`<div class="activity-item"><b>${escape(x.action||'Activity')}</b><span>${escape(x.actor_id||'')} • ${escape(new Date(x.created_at).toLocaleString())}</span></div>`).join('')||'<p class="muted-note">No recent activities.</p>';
+      }else{
+        act.innerHTML=`<div class="activity-item"><b>Attendance</b><span>Present today: ${present}</span></div><div class="activity-item"><b>Duty Status</b><span>On duty now: ${Number(stats.on_duty||0)}</span></div>`;
+      }
+    }
+    const notes=$('#premiumNotifications');
+    if(notes){
+      try{
+        const ns=await api('/notices');
+        notes.innerHTML=(ns||[]).slice(0,5).map(x=>`<div class="activity-item"><b>📢 Notice</b><span>${escape(x.message||'New notification')}</span></div>`).join('')||'<p class="muted-note">No new notifications.</p>';
+      }catch(e){notes.innerHTML='<p class="muted-note">No new notifications.</p>';}
+    }
+  }catch(e){console.log('Premium dashboard:',e.message)}
+}
+
 async function refresh(){try{await loadLocationConfigs(); populateLocationSelects(); fillAutoAttendance(); const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;
 if(role==='field_officer'){const x=$('#createOfficerParent');if(x)x.value=user.staff_id;const l=$('#createOfficerLocation');if(l)l.value=user.location_code||'';const b=$('#myOfficerRows');if(b)b.innerHTML=staff.filter(x=>x.role==='officer'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Officers found.</td></tr>';}
 if(role==='officer'){const x=$('#createSupervisorParent');if(x)x.value=user.staff_id;const l=$('#createSupervisorLocation');if(l)l.value=user.location_code||'';const b=$('#mySupervisorRows');if(b)b.innerHTML=staff.filter(x=>x.role==='supervisor'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';}
