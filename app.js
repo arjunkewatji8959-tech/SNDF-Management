@@ -53,9 +53,9 @@ function renderAttendance(rows){
  const detail=$('#attendanceDetailRows');
  const selectedRole=$('#attendanceRoleFilter')?.value||'all';
  const month=$('#attendanceMonth')?.value||new Date().toISOString().slice(0,7);
- const loc=$('#attendanceLocation')?.value||'all'; const duty=$('#attendanceDutyHours')?.value||'all'; const shift=$('#attendanceShift')?.value||'all';
+ const loc=$('#attendanceLocation')?.value||'all'; const duty=$('#attendanceDutyHours')?.value||'all'; const shift=$('#attendanceShift')?.value||'all'; const idSearch=($('#attendanceIdSearch')?.value||'').trim().toLowerCase();
  const [yy,mm]=month.split('-').map(Number); const days=new Date(yy,mm,0).getDate();
- const filtered=rows.filter(a=>(selectedRole==='all'||a.role===selectedRole)&&String(a.date||'').startsWith(month)&&(loc==='all'||String(a.staff_location_code||a.location_code||'').toLowerCase()===loc.toLowerCase())&&(duty==='all'||String(a.duty_hours)===duty)&&(shift==='all'||a.shift===shift));
+ const filtered=rows.filter(a=>(selectedRole==='all'||a.role===selectedRole)&&String(a.date||'').startsWith(month)&&(loc==='all'||String(a.staff_location_code||a.location_code||'').toLowerCase()===loc.toLowerCase())&&(duty==='all'||String(a.duty_hours)===duty)&&(shift==='all'||a.shift===shift)&&(!idSearch||String(a.staff_id||'').toLowerCase().includes(idSearch)));
 
  // Monthly P/A matrix
  if(head&&body){
@@ -87,6 +87,7 @@ function renderAttendance(rows){
        <td>${escape(a.staff_location_code||a.location_code||'—')}</td>
        <td>${escape(a.location||'—')}</td>
        <td>${escape(a.shift||'—')}</td>
+       <td>${escape((Number(a.duty_hours)===8?8:12)+' Hours')}</td>
        <td>${escape(a.check_in||'—')}</td>
        <td>${escape(a.check_out||'—')}</td>
        <td>${escape(a.hours_worked||0)}</td>
@@ -106,13 +107,13 @@ function renderDaily(rows){
  const b=$('#dailyRows');if(!b)return;
  const d=$('#dailyDate')?.value||new Date().toISOString().slice(0,10);
  const loc=($('#dailyLocation')?.value||'').trim().toLowerCase();
- const duty=$('#dailyDutyHours')?.value||'all'; const shift=$('#dailyShift')?.value||'all';
- const list=rows.filter(x=>x.date===d).filter(x=>(!loc||String(x.staff_location_code||x.location_code||'').toLowerCase()===loc||String(x.location||'').toLowerCase().includes(loc))&&(duty==='all'||String(x.duty_hours)===duty)&&(shift==='all'||x.shift===shift));
+ const duty=$('#dailyDutyHours')?.value||'all'; const shift=$('#dailyShift')?.value||'all'; const idSearch=($('#dailyIdSearch')?.value||'').trim().toLowerCase();
+ const list=rows.filter(x=>x.date===d).filter(x=>(!idSearch||String(x.staff_id||'').toLowerCase().includes(idSearch))).filter(x=>(!loc||String(x.staff_location_code||x.location_code||'').toLowerCase()===loc||String(x.location||'').toLowerCase().includes(loc))&&(duty==='all'||String(x.duty_hours)===duty)&&(shift==='all'||x.shift===shift));
  b.innerHTML=list.map(x=>{
   const photo=x.photo||'';
   const photoCell=photo ? `<img class="attendance-photo-thumb" src="${escape(photo)}" alt="Live attendance photo" title="Open live attendance photo" onclick="openAttendancePhoto('${escape(photo)}')">` : '<span class="photo-missing">No photo</span>';
   return `<tr><td>${photoCell}</td><td>${label(x.role)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.name)}</td><td>${escape(x.staff_location_code||x.location_code||'—')}</td><td>${escape(x.shift||'')}</td><td>${escape((Number(x.duty_hours)===8?8:12)+' Hours')}</td><td>${escape(x.check_in||'')}</td><td>${escape(x.check_out||'')}</td><td>${x.hours_worked||0}</td><td>${escape(x.attendance_status||'')}</td></tr>`;
- }).join('')||'<tr><td colspan="10">No attendance for selected date/location.</td></tr>';
+ }).join('')||'<tr><td colspan="11">No attendance for selected date/location.</td></tr>';
 }
 function renderStaff(list){
  const groups={field_officer:'#fieldOfficerRows',supervisor:'#supervisorRows',guard:'#guardRows'};
@@ -294,7 +295,7 @@ $('#profileForm')?.addEventListener('submit',async e=>{
 $('#suspendForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/staff/'+$('#suspendStaff').value+'/suspend',{method:'PUT',body:JSON.stringify({hours:Number($('#suspendHours').value),reason:$('#suspendReason').value})});msg('ID suspended');refresh()}catch(err){alert(err.message)}});
 $('#downloadDaily')?.addEventListener('click',()=>{const d=$('#dailyDate')?.value||new Date().toISOString().slice(0,10);const loc=($('#dailyLocation')?.value||'').trim();const duty=$('#dailyDutyHours')?.value||'all';const shift=$('#dailyShift')?.value||'all';downloadAttendance('',d,'',loc,duty,shift)});
 $('#downloadAttendanceMatrix')?.addEventListener('click',()=>{const m=$('#attendanceMonth')?.value||new Date().toISOString().slice(0,7);const loc=$('#attendanceLocation')?.value||'all';const duty=$('#attendanceDutyHours')?.value||'all';const shift=$('#attendanceShift')?.value||'all';downloadAttendance('', '', m, loc,duty,shift)});
-$('#attendanceMonth')?.addEventListener('change',()=>{if(isAdminRole)refresh()});$('#dailyDate')?.setAttribute('value',new Date().toISOString().slice(0,10));$('#attendanceMonth')?.setAttribute('value',new Date().toISOString().slice(0,7));$('#dailyDate')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));$('#dailyLocation')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));window.downloadAttendanceMonth=(r)=>{const m=$('#attendanceMonth')?.value;if(!m)return alert('Select a month first');downloadAttendance(r,'',m)};
+$('#attendanceMonth')?.addEventListener('change',()=>{if(isAdminRole)refresh()});$('#dailyDate')?.setAttribute('value',new Date().toISOString().slice(0,10));$('#attendanceMonth')?.setAttribute('value',new Date().toISOString().slice(0,7));$('#dailyDate')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));$('#dailyLocation')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#dailyIdSearch')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#attendanceIdSearch')?.addEventListener('input',()=>renderAttendance(window._attendanceRows||[]));window.downloadAttendanceMonth=(r)=>{const m=$('#attendanceMonth')?.value;if(!m)return alert('Select a month first');downloadAttendance(r,'',m)};
 $('form[data-type="staff"] select[name="role"]')?.addEventListener('change',()=>fillCreateParent(staff));
 $('#createLocation')?.addEventListener('change',()=>fillCreateParent(staff));
 $('#profileRoleFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
@@ -415,9 +416,12 @@ $('#relieverForm')?.addEventListener('submit',async e=>{
   const s=(window._relievers||[]).find(x=>x.staff_id===id);
   if(!s)return alert('Select a valid Guard/Supervisor');
   try{
-    if(!s.is_reliever) await api('/staff/'+s.id+'/reliever',{method:'PUT',body:JSON.stringify({is_reliever:1})});
-    await api('/staff/'+s.id+'/location',{method:'PUT',body:JSON.stringify({location_code:loc})});
-    msg('Reliever assignment saved ✓. Staff must check in at this location.');
+    const r=await api('/relievers/assign',{method:'POST',body:JSON.stringify({staff_id:s.staff_id,location_code:loc,shift:$('#relieverShift')?.value||'Day Shift'})});
+    msg(r.whatsapp_sent?'Reliever assigned ✓ WhatsApp message sent':'Reliever assigned ✓ WhatsApp link ready');
+    if(r.whatsapp_url && !r.whatsapp_sent){
+      const open=confirm('Reliever assigned. WhatsApp Cloud API is not configured on the server. Open WhatsApp message now?');
+      if(open) window.open(r.whatsapp_url,'_blank');
+    }
     refresh();loadRelievers();
   }catch(e){alert(e.message)}
 });

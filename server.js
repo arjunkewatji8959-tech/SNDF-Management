@@ -476,6 +476,49 @@ app.put('/api/profile/me',auth,(req,res)=>{
 });
 
 
+
+// WhatsApp notification helper. For automatic sending, configure Meta WhatsApp Cloud API
+// with WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN. The business number shown to
+// users is WHATSAPP_SENDER_NUMBER (default: 8959872715).
+async function sendWhatsAppMessage(to,text){
+  const sender=process.env.WHATSAPP_SENDER_NUMBER || '8959872715';
+  const phoneNumberId=process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token=process.env.WHATSAPP_ACCESS_TOKEN;
+  const cleanTo=String(to||'').replace(/\D/g,'');
+  const normalized=cleanTo.length===10 ? '91'+cleanTo : cleanTo;
+  const waText=encodeURIComponent(text);
+  const whatsapp_url=normalized ? `https://wa.me/${normalized}?text=${waText}` : '';
+  if(!phoneNumberId || !token || !normalized) return {sent:false,whatsapp_url,sender};
+  try{
+    const r=await fetch(`https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,{
+      method:'POST',headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({messaging_product:'whatsapp',to:normalized,type:'text',text:{preview_url:false,body:text}})
+    });
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok) return {sent:false,whatsapp_url,sender,error:data?.error?.message||`WhatsApp API ${r.status}`};
+    return {sent:true,whatsapp_url,sender};
+  }catch(e){ return {sent:false,whatsapp_url,sender,error:e.message}; }
+}
+
+app.post('/api/relievers/assign',auth,roles('admin','master_admin'),async(req,res)=>{
+  const staffId=String(req.body?.staff_id||'').trim(), location=String(req.body?.location_code||'').trim();
+  const shift=SHIFT_SCHEDULES[req.body?.shift]?req.body.shift:'Day Shift';
+  if(!staffId||!location)return res.status(400).json({error:'Select Reliever and Location'});
+  get('SELECT * FROM staff WHERE staff_id=? AND role IN ("guard","supervisor")',[staffId],async(e,s)=>{
+    if(e)return res.status(500).json({error:e.message}); if(!s)return res.status(404).json({error:'Reliever Guard/Supervisor not found'});
+    if(s.status!=='active')return res.status(400).json({error:'Only active staff can be assigned as Reliever'});
+    get('SELECT code FROM locations WHERE code=? AND active=1',[location],async(le,lr)=>{
+      if(le)return res.status(500).json({error:le.message}); if(!lr)return res.status(400).json({error:'Invalid or inactive Location Code'});
+      run('UPDATE staff SET is_reliever=1,location_code=? WHERE id=?',[location,s.id],res,async()=>{
+        const text=`SNDF MANAGEMENT – Reliever Duty\n\nHello ${s.name},\nYou have been assigned as a RELIEVER.\n\nLocation: ${location}\nShift: ${shift}\nStaff ID: ${s.staff_id}\nAssigned by: ${req.user.name||req.user.staff_id}\n\nPlease report to the assigned location and complete live attendance check-in.\n\nSNDF Support Services\nWhatsApp: ${process.env.WHATSAPP_SENDER_NUMBER||'8959872715'}`;
+        const wa=await sendWhatsAppMessage(s.contact_number,text);
+        audit(req.user,'RELIEVER_ASSIGNED',s.staff_id,`${location}; ${shift}; whatsapp=${wa.sent?'sent':'not-sent'}`);
+        res.json({message:'Reliever assignment saved',whatsapp_sent:wa.sent,whatsapp_url:wa.whatsapp_url||'',whatsapp_sender:wa.sender,whatsapp_error:wa.error||''});
+      });
+    });
+  });
+});
+
 // RELIEVER MANAGEMENT - Admin selects Guard/Supervisor, can change their location and mark a reliever check-in.
 app.get('/api/relievers',auth,roles('admin','master_admin'),(req,res)=>{
   all(`SELECT id,role,name,staff_id,location_code,parent_id,status,is_reliever FROM staff
