@@ -3,7 +3,7 @@
      File-level guide: keep each feature inside its marked section.
      ===================================================== -->
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SNDF Officer Dashboard</title><link rel="stylesheet" href="style.css"></head><body data-role="officer"><header class="appbar"><a class="brand" href="index.html"><img src="assets-logo.png" alt="SNDF">SNDF <small>SECURITY SERVICES</small></a><button class="mobile-toggle">☰</button></header><div class="app-layout"><aside class="sidebar"><div class="side-label">SNDF OFFICER</div><button data-view="home">⌂ Home</button><button data-view="attendance">▤ My Attendance</button><button data-view="daily">◷ Daily Attendance</button><button data-view="team-attendance">👥 Team Attendance</button><button data-view="account">◉ My Account</button><button data-view="team-management">👤 Supervisor Management</button><button data-view="fine">⚠ Fine Records</button><button data-view="notice">⚑ Notice</button><button data-view="help">? Help</button><button data-view="point-transfer">📍 Point Transfer</button><button data-view="tasks">✓ Task Management</button><button data-view="profile">♙ Profile</button><button id="logout" class="exit">⇥ Logout</button></aside><main class="dash-main"><div id="status" class="status"></div>
-<section id="home" class="view"><div class="dash-hero"><div><span class="eyebrow">SNDF • STAFF PORTAL</span><h1>Welcome, <span id="welcomeName">Officer</span> 👋</h1><p class="welcome-id-line">ID: <b id="welcomeId">OFF-ID</b> • <span id="welcomeRole">Officer</span></p><p>Manage your permitted attendance, account, fines, notices, help and profile.</p></div><div class="hero-profile" title="Tap to edit profile"><img id="welcomeDp" src="assets-logo.png" alt="Profile"><div><strong id="welcomeProfileName">Officer</strong><small id="welcomeProfileId">OFF-ID</small><span id="welcomeProfileRole">Officer</span></div></div></div><div class="panel live-attendance-panel"><h3>📍 Live Attendance</h3>
+<section id="home" class="view"><div class="dash-hero"><div><span class="eyebrow">SNDF • STAFF PORTAL</span><h1>Welcome, <span id="welcomeName">Officer</span> 👋</h1><p class="welcome-id-line">ID: <b id="welcomeId">OFF-ID</b> • <span id="welcomeRole">Officer</span></p><p>Manage your permitted attendance, account, fines, notices, help and profile.</p></div><div class="hero-profile"><img id="welcomeDp" src="assets-logo.png" alt="Profile"><div><strong id="welcomeProfileName">Officer</strong><small id="welcomeProfileId">OFF-ID</small><span id="welcomeProfileRole">Officer</span></div></div></div><div class="panel live-attendance-panel"><h3>📍 Live Attendance</h3>
 <div class="camera-grid compact-camera"><video id="camera" autoplay playsinline muted></video><img id="captured" alt="Captured attendance photo"></div>
 <div class="attendance-actions"><button type="button" id="capturePhoto" class="action primary-action">📷 Take Photo</button><button type="button" id="retakePhoto" class="action">↻ Retake</button></div>
 <div class="auto-attendance-info">
@@ -14,7 +14,26 @@
 </div>
 <div class="attendance-actions main-attendance-actions"><button type="button" id="checkIn" class="action success">✓ Check In</button><button type="button" id="checkOut" class="action">✓ Check Out</button></div>
 <small class="muted-note">Information, Location Code, Parent ID and Shift automatically fill from your profile/device. User only takes photo and presses Check In / Check Out.</small></div></section>
-
+<div class="premium-overview">
+  <div class="premium-overview-head">
+    
+    <span class="live-badge">● LIVE</span>
+  </div>
+  <div class="premium-cards">
+    <div class="premium-card"><span class="pc-icon">👮</span><div><small>Total Guards</small><strong id="premiumTotalGuards">0</strong></div></div>
+    <div class="premium-card"><span class="pc-icon">🟢</span><div><small>On Duty</small><strong id="premiumOnDuty">0</strong></div></div>
+    <div class="premium-card"><span class="pc-icon">🔴</span><div><small>Absent</small><strong id="premiumAbsent">0</strong></div></div>
+    <div class="premium-card"><span class="pc-icon">🔄</span><div><small>Relievers</small><strong id="premiumRelievers">0</strong></div></div>
+    <div class="premium-card"><span class="pc-icon">📍</span><div><small>Active Sites</small><strong id="premiumActiveSites">0</strong></div></div>
+    <div class="premium-card"><span class="pc-icon">💰</span><div><small>Monthly Payroll</small><strong id="premiumPayroll">₹0</strong></div></div>
+  </div>
+  <div class="premium-grid">
+    <div class="premium-panel"><h3>📊 Attendance Chart</h3><div class="mini-chart"><div><span>Present</span><b id="chartPresentText">0</b></div><div class="chart-track"><i id="chartPresentBar"></i></div><div><span>Absent</span><b id="chartAbsentText">0</b></div><div class="chart-track"><i id="chartAbsentBar"></i></div></div></div>
+    <div class="premium-panel"><h3>📍 Site Status</h3><div id="premiumSiteStatus" class="site-status-list"><p class="muted-note">Loading site status…</p></div></div>
+    <div class="premium-panel"><h3>🕒 Recent Activities</h3><div id="premiumRecentActivities" class="activity-list"><p class="muted-note">Loading activities…</p></div></div>
+    <div class="premium-panel"><h3>🔔 Notifications</h3><div id="premiumNotifications" class="activity-list"><p class="muted-note">Loading notifications…</p></div></div>
+  </div>
+</div>
 
 <section id="attendance" class="view hidden"><h2>Attendance</h2><div class="panel"><p>Download separate attendance sheets:</p><button class="action" onclick="downloadAttendance('admin')">Admin Sheet</button> <button class="action" onclick="downloadAttendance('field_officer')">Field Officer Sheet</button> <button class="action" onclick="downloadAttendance('supervisor')">Supervisor Sheet</button> <button class="action" onclick="downloadAttendance('guard')">Guard Sheet</button></div><div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Role</th><th>Staff ID</th><th>Name</th><th>Shift</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th><th>Action</th></tr></thead><tbody id="attendanceRows"></tbody></table></div></section>
 <section id="team-attendance" class="view hidden"><h2>Guards Attendance</h2>
