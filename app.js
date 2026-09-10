@@ -44,6 +44,16 @@ function showView(viewId){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 $('#appUser')?.addEventListener('click',()=>showView('profile'));
+// Home profile card is an Edit Profile shortcut. It opens the existing editable profile form.
+$$('.hero-profile').forEach(card=>{
+  card.setAttribute('role','button');
+  card.setAttribute('tabindex','0');
+  card.setAttribute('title','Tap to edit profile');
+  card.addEventListener('click',()=>showView('profile'));
+  card.addEventListener('keydown',e=>{
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();showView('profile');}
+  });
+});
 $$('[data-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
 // Explicitly start on Home so other sections can never appear together with the dashboard.
 showView('home');
