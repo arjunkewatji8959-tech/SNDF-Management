@@ -351,8 +351,8 @@ function checkGeofence(locationCode, locationText, cb){
 // =====================================================
 
 function auth(req,res,next){
-  const staffId=req.get('x-staff-id');
-  const role=req.get('x-role');
+  const staffId=String(req.get('x-staff-id')||'').trim();
+  const role=String(req.get('x-role')||'').trim().toLowerCase();
   if(!staffId || !role) return res.status(401).json({error:'Login required'});
   get('SELECT * FROM staff WHERE staff_id=? AND role=?',[staffId,role],(err,user)=>{
     if(err) return res.status(500).json({error:err.message});
@@ -407,18 +407,26 @@ app.get('/api/profile-update-sheet',auth,roles('admin','master_admin'),(req,res)
 
 app.post('/api/staff',auth,roles('admin','master_admin','field_officer','officer','supervisor'),(req,res)=>{
   const x=req.body||{};
-  const role=['admin','field_officer','officer','supervisor','guard'].includes(x.role)?x.role:null;
-  if(!role || !x.name || !x.staff_id || !x.password) return res.status(400).json({error:'Role, name, Staff ID and password are required'});
+  const role=String(x.role||'').trim().toLowerCase();
+  const staffId=String(x.staff_id||'').trim();
+  const password=String(x.password??'');
+  if(!['admin','field_officer','officer','supervisor','guard'].includes(role) || !String(x.name||'').trim() || !staffId || !password) return res.status(400).json({error:'Role, name, Staff ID and password are required'});
+  if(password.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});
   if(role==='admin' && req.user.role!=='master_admin') return res.status(403).json({error:'Only Master Admin can create a new Admin'});
   const createTargets={master_admin:['admin','field_officer','officer','supervisor','guard'],admin:['field_officer','officer','supervisor','guard'],field_officer:['officer'],officer:['supervisor'],supervisor:['guard'],guard:[]};
   if(!createTargets[req.user.role]?.includes(role)) return res.status(403).json({error:`${req.user.role} cannot create ${role}`});
   if(role==='master_admin') return res.status(403).json({error:'Master Admin account is controlled by the system'});
   const location=String(x.location_code||'').trim(), parent=role==='admin' ? 'adi123' : String(x.parent_id||'').trim();
+  get('SELECT id FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
+    if(duplicateErr)return res.status(500).json({error:duplicateErr.message});
+    if(duplicate)return res.status(409).json({error:`Staff ID ${staffId} already exists. Use a unique Staff ID.`});
+    finish();
+  });
   const finish=()=>{
-    bcrypt.hash(String(x.password),12,(he,hashed)=>{
+    bcrypt.hash(password,12,(he,hashed)=>{
       if(he)return res.status(500).json({error:'Password setup failed'});
       run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,dob,department,contact_number,dp,age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,driving_license,training_details,work_experience,photo_front,photo_back,photo_left,photo_right,is_reliever) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [role,x.name,x.staff_id,hashed,x.post||role,x.salary||0,location,parent,x.dob||'',x.department||'',x.contact_number||'',x.dp||'',
+        [role,String(x.name).trim(),staffId,hashed,x.post||role,x.salary||0,location,parent,x.dob||'',x.department||'',x.contact_number||'',x.dp||'',
          x.age||null,x.height||null,x.weight||null,x.blood_group||'',x.qualification||'',x.physical_level||'',x.medical_level||'',x.skills||'',x.police_verification||'',x.driving_license||'',x.training_details||'',x.work_experience||'',x.photo_front||'',x.photo_back||'',x.photo_left||'',x.photo_right||'',Number(x.is_reliever)?1:0],res,row=>{
           audit(req.user,'STAFF_CREATED',x.staff_id,`${role} ${x.name} created`);
           res.status(201).json({id:row.lastID,message:'Staff created'});
@@ -636,12 +644,15 @@ app.put('/api/staff/:id/location',auth,roles('admin','master_admin'),(req,res)=>
 });
 app.post('/api/reliever-checkin',auth,roles('admin','master_admin'),(req,res)=>{
   const x=req.body||{}, targetId=String(x.staff_id||'').trim(), location=String(x.location_code||'').trim();
-  const shift=SHIFT_SCHEDULES[x.shift]?x.shift:'Day Shift';
   if(!targetId||!location)return res.status(400).json({error:'Select reliever and location'});
   get('SELECT * FROM staff WHERE staff_id=? AND role IN ("guard","supervisor")',[targetId],(err,s)=>{
     if(err)return res.status(500).json({error:err.message});
     if(!s)return res.status(404).json({error:'Reliever Guard/Supervisor not found'});
     if(!s.is_reliever)return res.status(403).json({error:'Selected member is not marked as Reliever'});
+    const dutyHours=Number(s.reliever_duty_hours)===8?8:12;
+    const allowedShifts=shiftForDutyHours(dutyHours);
+    const shift=allowedShifts.includes(String(x.shift||''))?String(x.shift):String(s.reliever_shift||allowedShifts[0]);
+    const finalShift=allowedShifts.includes(shift)?shift:allowedShifts[0];
     const now=new Date(), date=now.toISOString().slice(0,10), time=now.toTimeString().slice(0,8), iso=now.toISOString();
     get('SELECT id FROM attendance WHERE staff_id=? AND date=? ORDER BY id DESC LIMIT 1',[targetId,date],(ae,existing)=>{
       if(ae)return res.status(500).json({error:ae.message});
@@ -649,8 +660,8 @@ app.post('/api/reliever-checkin',auth,roles('admin','master_admin'),(req,res)=>{
       db.run('UPDATE staff SET location_code=? WHERE id=?',[location,s.id],(ue)=>{
         if(ue)return res.status(500).json({error:ue.message});
         run('INSERT INTO attendance(staff_id,name,date,photo,location,shift,check_in,check_in_at,attendance_status) VALUES(?,?,?,?,?,?,?,?,?)',
-          [s.staff_id,s.name,date,x.photo||'',location,shift,time,iso,'Present - Reliever Check-In'],res,row=>{
-            audit(req.user,'RELIEVER_CHECKIN',s.staff_id,`${shift}; location=${location}`);
+          [s.staff_id,s.name,date,x.photo||'',location,finalShift,time,iso,'Present - Reliever Check-In'],res,row=>{
+            audit(req.user,'RELIEVER_CHECKIN',s.staff_id,`${dutyHours}h ${finalShift}; location=${location}`);
             res.status(201).json({id:row.lastID,message:'Reliever check-in saved'});
           });
       });
@@ -1312,30 +1323,44 @@ app.get('/api/reports/payroll/export',auth,roles('admin','master_admin'),(req,re
 });
 
 // Login supports exactly four roles.
-app.post('/api/login',(req,res)=>{
-  const {staff_id,password,role}=req.body||{};
-  if(!staff_id||!password||!['master_admin','admin','field_officer','officer','supervisor','guard'].includes(role))return res.status(400).json({error:'Select a valid login role, Staff ID and password'});
+app.post('/api/login',async(req,res)=>{
+  const staffId=String(req.body?.staff_id||'').trim();
+  const password=String(req.body?.password??'');
+  const selectedRole=String(req.body?.role||'').trim().toLowerCase();
+  const validRoles=['master_admin','admin','field_officer','officer','supervisor','guard'];
+  if(!staffId||!password)return res.status(400).json({error:'Staff ID and password are required'});
+  if(selectedRole && !validRoles.includes(selectedRole))return res.status(400).json({error:'Invalid login role'});
 
-  // ============================= LOGIN =============================
-  // Passwords are stored as bcrypt hashes. Verify the entered password
-  // after finding the account by Staff ID and role.
-  get('SELECT id,role,name,staff_id,password,post,salary,location_code,parent_id,status,suspended_until,dob,department,contact_number,dp,age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,driving_license,training_details,work_experience,photo_front,photo_back,photo_left,photo_right,is_reliever FROM staff WHERE staff_id=? AND role=?',[staff_id,role],async (err,user)=>{
+  get('SELECT id,role,name,staff_id,password,post,salary,location_code,parent_id,status,suspended_until,dob,department,contact_number,dp,age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,driving_license,training_details,work_experience,photo_front,photo_back,photo_left,photo_right,is_reliever FROM staff WHERE staff_id=? LIMIT 1',[staffId],async(err,user)=>{
     if(err)return res.status(500).json({error:err.message});
-    if(!user)return res.status(401).json({error:'Wrong Staff ID, password or role'});
+    if(!user)return res.status(401).json({error:'Staff ID not found'});
 
     let passwordOk=false;
-    try { passwordOk=await bcrypt.compare(String(password),String(user.password)); } catch(e) { passwordOk=false; }
-
-    // Legacy plain-text passwords are migrated to bcrypt after a successful login.
-    if(!passwordOk && String(user.password)===String(password)){
+    try{passwordOk=await bcrypt.compare(password,String(user.password));}catch(e){passwordOk=false;}
+    if(!passwordOk && String(user.password)===password){
       passwordOk=true;
-      try { const hashed=await bcrypt.hash(String(password),12); db.run('UPDATE staff SET password=? WHERE id=?',[hashed,user.id],()=>{}); } catch(e) {}
+      try{
+        const hashed=await bcrypt.hash(password,12);
+        db.run('UPDATE staff SET password=? WHERE id=?',[hashed,user.id],()=>{});
+      }catch(e){}
     }
-    if(!passwordOk)return res.status(401).json({error:'Wrong Staff ID, password or role'});
+    if(!passwordOk)return res.status(401).json({error:'Incorrect password'});
+    if(user.status==='suspended'&&user.suspended_until&&new Date(user.suspended_until)>new Date()){
+      return res.status(403).json({error:`Account suspended until ${new Date(user.suspended_until).toLocaleString()}`});
+    }
+
+    const redirect={
+      master_admin:'admin.html',
+      admin:'admin.html',
+      field_officer:'field-officer.html',
+      officer:'officer.html',
+      supervisor:'supervisor.html',
+      guard:'guard.html'
+    }[user.role];
+    if(!redirect)return res.status(403).json({error:'This account has no valid dashboard role'});
+
+    audit({staff_id:user.staff_id,role:user.role},'LOGIN_SUCCESS',user.staff_id,selectedRole&&selectedRole!==user.role?`Successful login; selected role ${selectedRole} corrected to ${user.role}`:'Successful login');
     delete user.password;
-    if(user.status==='suspended'&&user.suspended_until&&new Date(user.suspended_until)>new Date())return res.status(403).json({error:`Account suspended until ${new Date(user.suspended_until).toLocaleString()}`});
-    const redirect={master_admin:'admin.html',admin:'admin.html',field_officer:'field-officer.html',officer:'officer.html',supervisor:'supervisor.html',guard:'guard.html'}[role];
-    audit({staff_id:user.staff_id,role:user.role},'LOGIN_SUCCESS',user.staff_id,'Successful login');
     res.json({message:'Login successful',redirect,user});
   });
 });
