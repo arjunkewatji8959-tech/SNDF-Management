@@ -178,10 +178,49 @@ db.serialize(()=>{
     };
     if(masterErr) console.error('Master Admin lookup failed:', masterErr.message);
     else if(!masterRow || masterRow.role!=='master_admin') ensureMaster();
+    ensureInitialAccounts();
   });
 
-  // Production database intentionally starts with Master Admin only.
-  // Real Admin accounts must be created explicitly from Master Admin -> Create / Manage Members.
+  // =====================================================
+  // SECTION: INITIAL ACCOUNT BOOTSTRAP
+  // Creates the requested starter accounts only when their Staff IDs
+  // do not already exist. Existing production accounts are never overwritten.
+  // Password = Staff ID for these initial accounts.
+  // =====================================================
+  function ensureInitialAccounts(){
+    const accounts = [
+      {role:'admin', name:'SNDF Admin 1', staff_id:'admin001', post:'Admin', parent_id:'adi123', department:'Management'},
+      {role:'admin', name:'SNDF Admin 2', staff_id:'admin002', post:'Admin', parent_id:'adi123', department:'Management'},
+      {role:'field_officer', name:'SNDF Field Officer 1', staff_id:'field001', post:'Field Officer', parent_id:'admin001', department:'Operations'}
+    ];
+
+    const createNext=(i)=>{
+      if(i>=accounts.length){
+        console.log('Initial SNDF accounts check completed: admin001, admin002, field001');
+        return;
+      }
+      const a=accounts[i];
+      db.get('SELECT id FROM staff WHERE staff_id=?',[a.staff_id],(e,row)=>{
+        if(e){ console.error('Initial account lookup failed:',e.message); return createNext(i+1); }
+        if(row) return createNext(i+1);
+        bcrypt.hash(a.staff_id,12,(he,hashed)=>{
+          if(he){ console.error('Initial account password setup failed:',he.message); return createNext(i+1); }
+          db.run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,department,status)
+                  VALUES(?,?,?,?,?,?,?,?,?,'active')`,
+            [a.role,a.name,a.staff_id,hashed,a.post,0,'',a.parent_id,a.department],
+            (ie)=>{
+              if(ie) console.error('Initial account creation failed:',ie.message);
+              else console.log(`Initial account created: ${a.staff_id}`);
+              createNext(i+1);
+            });
+        });
+      });
+    };
+    createNext(0);
+  }
+
+  // END SECTION: INITIAL ACCOUNT BOOTSTRAP
+  // Production data is preserved; only missing starter Staff IDs are created.
 });
 
 // =====================================================
@@ -413,10 +452,16 @@ app.post('/api/staff',auth,roles('admin','master_admin','field_officer','officer
   if(!['admin','field_officer','officer','supervisor','guard'].includes(role) || !String(x.name||'').trim() || !staffId || !password) return res.status(400).json({error:'Role, name, Staff ID and password are required'});
   if(password.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});
   if(role==='admin' && req.user.role!=='master_admin') return res.status(403).json({error:'Only Master Admin can create a new Admin'});
-  const createTargets={master_admin:['admin','field_officer','officer','supervisor','guard'],admin:['field_officer','officer','supervisor','guard'],field_officer:['officer'],officer:['supervisor'],supervisor:['guard'],guard:[]};
+  // =====================================================
+  // SECTION: ROLE HIERARCHY
+  // Master Admin -> Admin -> Field Officer -> Supervisor -> Guard
+  // Field Officer manages all locations/points and all Supervisors.
+  // =====================================================
+  const createTargets={master_admin:['admin','field_officer','supervisor','guard'],admin:['field_officer'],field_officer:['supervisor'],supervisor:['guard'],officer:[],guard:[]};
   if(!createTargets[req.user.role]?.includes(role)) return res.status(403).json({error:`${req.user.role} cannot create ${role}`});
   if(role==='master_admin') return res.status(403).json({error:'Master Admin account is controlled by the system'});
-  const location=String(x.location_code||'').trim(), parent=role==='admin' ? 'adi123' : String(x.parent_id||'').trim();
+  const location=String(x.location_code||'').trim();
+  const parent=role==='admin' ? 'adi123' : String(x.parent_id||'').trim();
   get('SELECT id FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
     if(duplicateErr)return res.status(500).json({error:duplicateErr.message});
     if(duplicate)return res.status(409).json({error:`Staff ID ${staffId} already exists. Use a unique Staff ID.`});
@@ -434,7 +479,9 @@ app.post('/api/staff',auth,roles('admin','master_admin','field_officer','officer
     });
   };
   const validateLocation=(next)=>{
-    if(role==='admin' || (role==='field_officer' && !location)) return next();
+    // Field Officers are multi-point managers, so their own location is optional.
+    // Supervisors and Guards must have a valid active Location Code.
+    if(role==='admin' || role==='field_officer') return next();
     if(!location)return res.status(400).json({error:'Please create/select a Location Code first'});
     get('SELECT code FROM locations WHERE code=? AND active=1',[location],(le,lr)=>{
       if(le)return res.status(500).json({error:le.message});
@@ -443,9 +490,34 @@ app.post('/api/staff',auth,roles('admin','master_admin','field_officer','officer
     });
   };
   validateLocation(()=>{
-    if(role==='officer')return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{if(e)return res.status(500).json({error:e.message});if(!p||p.role!=='field_officer')return res.status(400).json({error:'Officer Parent ID must be a Field Officer ID'});finish();});
-    if(role==='supervisor')return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{if(e)return res.status(500).json({error:e.message});if(!p||p.role!=='officer')return res.status(400).json({error:'Supervisor Parent ID must be an Officer ID'});finish();});
-    if(role==='guard')return get('SELECT role,location_code FROM staff WHERE staff_id=?',[parent],(e,p)=>{if(e)return res.status(500).json({error:e.message});if(!p||p.role!=='supervisor')return res.status(400).json({error:'Guard Parent ID must be a Supervisor ID'});if(p.location_code!==location)return res.status(400).json({error:'Guard location must match the Supervisor location'});finish();});
+    // Field Officer parent can be an Admin or Master Admin.
+    if(role==='field_officer'){
+      if(!parent)return res.status(400).json({error:'Field Officer Parent ID must be an Admin or Master Admin ID'});
+      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{
+        if(e)return res.status(500).json({error:e.message});
+        if(!p || !['admin','master_admin'].includes(p.role))return res.status(400).json({error:'Field Officer Parent ID must be an Admin or Master Admin ID'});
+        finish();
+      });
+    }
+    // Supervisor parent must be a Field Officer.
+    if(role==='supervisor'){
+      if(!parent)return res.status(400).json({error:'Supervisor Parent ID must be a Field Officer ID'});
+      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{
+        if(e)return res.status(500).json({error:e.message});
+        if(!p || p.role!=='field_officer')return res.status(400).json({error:'Supervisor Parent ID must be a Field Officer ID'});
+        finish();
+      });
+    }
+    // Guard parent must be a Supervisor and the Guard point must match the Supervisor point.
+    if(role==='guard'){
+      if(!parent)return res.status(400).json({error:'Guard Parent ID must be a Supervisor ID'});
+      return get('SELECT role,location_code FROM staff WHERE staff_id=?',[parent],(e,p)=>{
+        if(e)return res.status(500).json({error:e.message});
+        if(!p || p.role!=='supervisor')return res.status(400).json({error:'Guard Parent ID must be a Supervisor ID'});
+        if(p.location_code!==location)return res.status(400).json({error:'Guard location must match the Supervisor location'});
+        finish();
+      });
+    }
     finish();
   });
 });
@@ -471,11 +543,16 @@ app.put('/api/staff/:id/profile',auth,roles('admin','master_admin'),(req,res)=>{
       });
     };
     const continueEdit=()=>{
+    if(newRole==='field_officer'){
+      if(!parent)return res.status(400).json({error:'Field Officer Parent ID must be an Admin or Master Admin ID'});
+      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(pe,p)=>{ if(pe)return res.status(500).json({error:pe.message}); if(!p || !['admin','master_admin'].includes(p.role))return res.status(400).json({error:'Field Officer Parent ID must be an Admin or Master Admin ID'}); save(); });
+    }
     if(newRole==='officer' && parent){
       return get('SELECT role FROM staff WHERE staff_id=?',[parent],(pe,p)=>{ if(pe)return res.status(500).json({error:pe.message}); if(!p || p.role!=='field_officer')return res.status(400).json({error:'Officer Parent ID must be a Field Officer ID'}); save(); });
     }
-    if(newRole==='supervisor' && parent){
-      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(pe,p)=>{ if(pe)return res.status(500).json({error:pe.message}); if(!p || p.role!=='officer')return res.status(400).json({error:'Supervisor Parent ID must be an Officer ID'}); save(); });
+    if(newRole==='supervisor'){
+      if(!parent)return res.status(400).json({error:'Supervisor Parent ID must be a Field Officer ID'});
+      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(pe,p)=>{ if(pe)return res.status(500).json({error:pe.message}); if(!p || p.role!=='field_officer')return res.status(400).json({error:'Supervisor Parent ID must be a Field Officer ID'}); save(); });
     }
     if(newRole==='guard' && parent){
       return get('SELECT role,location_code FROM staff WHERE staff_id=?',[parent],(pe,p)=>{

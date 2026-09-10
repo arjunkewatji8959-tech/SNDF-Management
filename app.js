@@ -287,8 +287,11 @@ function fillCreateParent(list){
   if(!roleSel||!parentSel)return;
   const roleVal=roleSel.value, loc=locSel?.value||'';
   let parents=[];
-  if(roleVal==='officer')parents=list.filter(s=>s.role==='field_officer');
-  if(roleVal==='supervisor')parents=list.filter(s=>s.role==='officer');
+  // Field Officer can be assigned under Admin or Master Admin.
+  if(roleVal==='field_officer')parents=list.filter(s=>['admin','master_admin'].includes(s.role));
+  // Supervisor is directly under Field Officer.
+  if(roleVal==='supervisor')parents=list.filter(s=>s.role==='field_officer');
+  // Guard is directly under Supervisor at the same point.
   if(roleVal==='guard')parents=list.filter(s=>s.role==='supervisor' && (!loc||s.location_code===loc));
   parentSel.innerHTML='<option value="">Parent ID</option>'+parents.map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${escape(s.staff_id)}${s.location_code?' • '+escape(s.location_code):''}</option>`).join('');
 }
