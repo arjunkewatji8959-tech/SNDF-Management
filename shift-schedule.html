@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SNDF - Shift Schedule</title>
+<link rel="stylesheet" href="style.css">
+<style>body{background:#f3f7fc}.schedule-wrap{max-width:1200px;margin:0 auto;padding:22px}.panel{background:#fff;border:1px solid #d7e3f0;border-radius:14px;padding:20px;margin-bottom:18px}.grid-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.grid-form label{display:flex;flex-direction:column;gap:6px;font-weight:700}.grid-form input,.grid-form select{padding:11px;border:1px solid #cbd7e6;border-radius:8px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}button{border:0;border-radius:8px;padding:11px 16px;background:#1764b5;color:#fff;cursor:pointer}.danger{background:#b42318}.muted{color:#667085}@media(max-width:760px){.grid-form{grid-template-columns:1fr}.schedule-wrap{padding:14px}.table-wrap{overflow:auto}table{min-width:760px}}
+</style>
+</head>
+<body>
+<header class="appbar"><a class="brand" href="admin.html"><img src="assets-logo.png" alt="SNDF">SNDF <small>SECURITY SERVICES</small></a><button class="mobile-toggle" onclick="document.querySelector('.side').classList.toggle('open')">☰</button></header>
+<div class="schedule-wrap">
+<section class="panel"><h1>🕐 Shift Schedule</h1><p class="muted">Admin/Master Admin Staff ID, Location ID/Code aur location ke 8/12 hour duty ke hisab se shift set kar sakte hain.</p>
+<form id="scheduleForm" class="grid-form">
+<label>Staff ID<select id="staffId" required><option value="">Select Staff</option></select></label>
+<label>Location ID / Code<select id="locationCode" required><option value="">Select Location</option></select></label>
+<label>Effective From Date<input id="scheduleDate" type="date" required><small class="muted">Is date se ye shift automatically chalegi jab tak nayi shift assign karke change nahi ki jati.</small></label>
+<label>Duty Hours<select id="dutyHours" required disabled><option value="12">12 Hours</option><option value="8">8 Hours</option></select><small class="muted">Location ke configured duty hours ke hisab se automatically set hoga.</small></label>
+<label>Shift<select id="shift" required></select></label>
+<button type="submit">💾 Save Shift Schedule</button>
+</form><div id="msg" class="muted" style="margin-top:10px"></div></section>
+<section class="panel"><h2>Saved Shift Schedule</h2><div class="table-wrap"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="padding:10px">Effective From</th><th style="padding:10px">Staff</th><th style="padding:10px">Role</th><th style="padding:10px">Location</th><th style="padding:10px">Duty</th><th style="padding:10px">Shift</th><th style="padding:10px">Action</th></tr></thead><tbody id="rows"><tr><td colspan="7">Loading...</td></tr></tbody></table></div></section>
+</div>
+<script>
+// =====================================================
+// SHIFT SCHEDULE - ADMIN / MASTER ADMIN
+// =====================================================
+const user=JSON.parse(sessionStorage.getItem('sndfUser')||'null');
+if(!user||!['admin','master_admin'].includes(user.role))location.replace('login.html?role=admin');
+const $=id=>document.getElementById(id);
+const headers={'Content-Type':'application/json','x-staff-id':user.staff_id,'x-role':user.role};
+const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+async function api(path,opt={}){const r=await fetch('/api'+path,{headers,...opt,headers:{...headers,...(opt.headers||{})}});let d={};try{d=await r.json()}catch{}if(!r.ok)throw Error(d.error||'Request failed');return d}
+function fillShifts(){const h=Number($('dutyHours').value);$('shift').innerHTML=(h===8?['Morning Shift — 06:00–14:00','Evening Shift — 14:00–22:00','Night Shift — 22:00–06:00']:['Day Shift — 08:00–20:00','Night Shift — 20:00–08:00']).map(x=>`<option value="${esc(x.split(' — ')[0])}">${esc(x)}</option>`).join('')}
+async function load(){const [locs,staff,rows]=await Promise.all([api('/locations'),api('/staff'),api('/shift-schedules')]);window._locs=locs||[];$('locationCode').innerHTML='<option value="">Select Location</option>'+window._locs.filter(x=>x.active!==0).map(x=>`<option value="${esc(x.code)}">${esc(x.code)} — ${esc(x.name||'')} (${Number(x.duty_hours)===8?8:12}h)</option>`).join('');$('staffId').innerHTML='<option value="">Select Staff</option>'+staff.filter(x=>['field_officer','supervisor','guard'].includes(x.role)).map(x=>`<option value="${esc(x.staff_id)}">${esc(x.name)} — ${esc(x.staff_id)} (${esc(x.role)})</option>`).join('');$('rows').innerHTML=rows.map(x=>`<tr><td>${esc(x.schedule_date)}</td><td>${esc(x.name||'')} (${esc(x.staff_id)})</td><td>${esc(x.role||'')}</td><td>${esc(x.location_code)} — ${esc(x.location_name||'')}</td><td>${Number(x.duty_hours)} Hours</td><td>${esc(x.shift)}</td><td><button class="danger" onclick="delSchedule(${Number(x.id)})">Delete</button></td></tr>`).join('')||'<tr><td colspan="7">No schedule found.</td></tr>'}
+async function delSchedule(id){if(!confirm('Delete this shift schedule?'))return;try{await api('/shift-schedules/'+id,{method:'DELETE'});load()}catch(e){alert(e.message)}}
+$('locationCode').addEventListener('change',()=>{const l=(window._locs||[]).find(x=>x.code===$('locationCode').value);if(l){$('dutyHours').value=Number(l.duty_hours)===8?8:12;fillShifts()}});
+$('scheduleDate').value=new Date().toISOString().slice(0,10);$('scheduleForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/shift-schedules',{method:'POST',body:JSON.stringify({staff_id:$('staffId').value,location_code:$('locationCode').value,schedule_date:$('scheduleDate').value,duty_hours:Number($('dutyHours').value),shift:$('shift').value})});$('msg').textContent='Shift assigned ✓ — ye shift isi date se chalegi aur jab tak badli nahi jayegi tab tak same rahegi.';load()}catch(e){$('msg').textContent=e.message}});
+fillShifts();load();
+// END SECTION: SHIFT SCHEDULE
+</script></body></html>

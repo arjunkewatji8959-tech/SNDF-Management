@@ -37,11 +37,9 @@ async function load(){
 function populateParents(){
  const role=$('#ep_role').value, loc=$('#ep_location_code').value, sel=$('#ep_parent_id');
  let parents=[];
- if(role==='field_officer') parents=staff.filter(s=>['admin','master_admin'].includes(s.role));
  if(role==='supervisor') parents=staff.filter(s=>s.role==='field_officer');
- if(role==='officer') parents=staff.filter(s=>s.role==='field_officer');
  if(role==='guard') parents=staff.filter(s=>s.role==='supervisor' && (!loc || s.location_code===loc));
- sel.innerHTML='<option value="">No Parent</option>'+parents.map(p=>`<option value="${esc(p.staff_id)}">${esc(p.name)} — ${esc(p.staff_id)}${p.location_code?' • '+esc(p.location_code):''}</option>`).join('');
+ sel.innerHTML='<option value="">Parent ID required for Supervisor/Guard</option>'+parents.map(p=>`<option value="${esc(p.staff_id)}">${esc(p.name)} — ${esc(p.staff_id)}${p.location_code?' • '+esc(p.location_code):''}</option>`).join('');
  sel.value=current.parent_id||'';
 }
 // END SECTION: FUNCTION populateParents

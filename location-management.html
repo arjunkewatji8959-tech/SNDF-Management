@@ -132,6 +132,7 @@
                   Address
                 </label>
                 <input id="address" placeholder="पूरा पता">
+                <button type="button" class="secondary" id="geocodeAddressBtn">📍 Get GPS from Address</button>
               </div>
               <div class="field">
                 <label>
@@ -239,6 +240,38 @@
           </div>
         </section>
         <!-- END SECTION: SECTION -->
+
+        <!-- =====================================================
+             LOCATION ASSIGNMENT / OWNERSHIP
+             Master Admin: assign locations to Admin/Field Officer.
+             Admin: assign its own points to Field Officers.
+        ===================================================== -->
+        <section class="card" id="assignmentCard">
+          <h2>👥 Location Distribution</h2>
+          <p class="muted">Ek Field Officer ko multiple locations de sakte hain. Example: 10 points → FO-01 ko 5, FO-02 ko 5. Admin ko bhi Master Admin multiple locations assign kar sakta hai.</p>
+          <div class="grid">
+            <div class="field">
+              <label>Member</label>
+              <select id="assignmentStaff"><option value="">Select Admin / Field Officer</option></select>
+            </div>
+            <div class="field">
+              <label>Locations (Ctrl/Command se multiple select)</label>
+              <select id="assignmentLocations" multiple size="7"></select>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="button" id="saveAssignmentBtn">💾 Save Location Distribution</button>
+            <button type="button" class="secondary" id="reloadAssignmentBtn">↻ Reload</button>
+          </div>
+          <div id="assignmentMsg" class="msg"></div>
+          <div class="table-wrap" style="margin-top:14px">
+            <table>
+              <thead><tr><th>Location</th><th>Member</th><th>Role</th><th>Assigned By</th><th>Assigned At</th><th>Action</th></tr></thead>
+              <tbody id="ownershipRows"><tr><td colspan="6">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+        <!-- END SECTION: LOCATION ASSIGNMENT / OWNERSHIP -->
       </main>
       <!-- END SECTION: MAIN -->
     </div>
@@ -420,7 +453,43 @@
           );
 
           resetForm();
-          await loadLocations();
+          await // =====================================================
+// SECTION: ADDRESS GEOCODING
+// =====================================================
+$('geocodeAddressBtn').addEventListener('click', async ()=>{
+  const q=$('address').value.trim(); if(!q)return showMessage('Address enter karein.',false);
+  try{
+    showMessage('GPS lookup ho raha hai…');
+    const d=await apiJson('/api/geocode?q='+encodeURIComponent(q),{headers});
+    $('latitude').value=Number(d.latitude).toFixed(7); $('longitude').value=Number(d.longitude).toFixed(7);
+    showMessage('GPS mil gaya ✓ '+(d.display_name||''));
+  }catch(e){showMessage(e.message,false)}
+});
+// END SECTION: ADDRESS GEOCODING
+
+// =====================================================
+// SECTION: LOCATION DISTRIBUTION / OWNERSHIP
+// =====================================================
+async function loadAssignments(){
+  try{
+    const [locations,staff,ownership]=await Promise.all([apiJson('/api/locations',{headers}),apiJson('/api/staff',{headers}),apiJson('/api/location-ownership',{headers})]);
+    const staffSel=$('assignmentStaff'), locSel=$('assignmentLocations');
+    const allowedStaff=(staff||[]).filter(x=>['admin','field_officer'].includes(x.role) && x.status==='active' && (currentUser.role==='master_admin' || x.role==='field_officer'));
+    staffSel.innerHTML='<option value="">Select Admin / Field Officer</option>'+allowedStaff.map(x=>`<option value="${esc(x.staff_id)}">${esc(x.name)} — ${esc(x.staff_id)} (${esc(x.role)})</option>`).join('');
+    locSel.innerHTML=(locations||[]).filter(x=>x.active!==0).map(x=>`<option value="${esc(x.code)}">${esc(x.code)} — ${esc(x.name||'')}</option>`).join('');
+    $('ownershipRows').innerHTML=(ownership||[]).map(x=>`<tr><td>${esc(x.code)} — ${esc(x.name||'')}</td><td>${esc(x.staff_name||'Unassigned')} ${x.staff_id?`(${esc(x.staff_id)})`:''}</td><td>${esc(x.role||'—')}</td><td>${esc(x.assigned_by||'—')}</td><td>${x.assigned_at?esc(new Date(x.assigned_at).toLocaleString()):'—'}</td><td>${x.staff_id?`<button type="button" class="danger" onclick="removeAssignment(${Number(x.id)})">Remove</button>`:'—'}</td></tr>`).join('')||'<tr><td colspan="6">No location distribution found.</td></tr>';
+  }catch(e){$('ownershipRows').innerHTML='<tr><td colspan="6">'+esc(e.message)+'</td></tr>';}
+}
+window.removeAssignment=async function(id){if(!confirm('Remove this location assignment?'))return;try{await apiJson('/api/location-assignments/'+id,{method:'DELETE',headers});showMessage('Assignment removed ✓');loadAssignments();loadLocations();}catch(e){showMessage(e.message,false)}};
+$('saveAssignmentBtn').addEventListener('click',async()=>{
+  const staffId=$('assignmentStaff').value; const codes=[...$('assignmentLocations').selectedOptions].map(o=>o.value);
+  if(!staffId||!codes.length)return showMessage('Member aur kam se kam ek location select karein.',false);
+  try{const d=await apiJson('/api/location-assignments',{method:'POST',headers,body:JSON.stringify({staff_id:staffId,location_codes:codes})});showMessage('Location distribution saved ✓');loadAssignments();loadLocations();}catch(e){showMessage(e.message,false)}
+});
+$('reloadAssignmentBtn').addEventListener('click',loadAssignments);
+// END SECTION: LOCATION DISTRIBUTION / OWNERSHIP
+
+loadLocations();
         } catch (err) {
           showMessage(`❌ ${err.message}`, false);
         } finally {
@@ -547,6 +616,7 @@
       // SECTION: INITIAL LOAD
       // -----------------------------------------------------
       loadLocations();
+      loadAssignments();
 
       // =====================================================
       // END LOCATION MANAGEMENT JAVASCRIPT

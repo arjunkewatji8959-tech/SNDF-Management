@@ -79,6 +79,9 @@
         <button type="button" id="locationManagementBtn" class="location-management-btn" title="Location Management">
           📍 Location Management
         </button>
+        <button type="button" id="shiftScheduleBtn" class="location-management-btn" title="Shift Schedule">
+          🕐 Shift Schedule
+        </button>
         <button data-view="profile-records">
           ♙ All Profile Records
         </button>
@@ -349,9 +352,6 @@
                   </option>
                   <option value="field_officer">
                     Field Officer
-                  </option>
-                  <option value="officer">
-                    Officer
                   </option>
                   <option value="supervisor">
                     Supervisor
@@ -930,9 +930,6 @@
                   <option value="field_officer">
                     Field Officer
                   </option>
-                  <option value="officer">
-                    Officer
-                  </option>
                   <option value="supervisor">
                     Supervisor
                   </option>
@@ -1102,19 +1099,16 @@
             <form data-type="staff" class="grid-form">
               <select name="role" id="createRole">
                 <option value="field_officer">
-                  Field Officer (Parent: Admin / Master Admin)
-                </option>
-                <option value="officer">
-                  Officer (Field Officer ID Required)
+                  Field Officer
                 </option>
                 <option value="supervisor">
-                  Supervisor (Parent: Field Officer)
+                  Supervisor
                 </option>
                 <option value="guard">
-                  Guard (Parent: Supervisor)
+                  Guard
                 </option>
-                <option value="admin">
-                  Admin
+                <option value="admin" class="master-only-option">
+                  Admin (Master Admin Only)
                 </option>
               </select>
               <input name="name" placeholder="Full Name" required>
@@ -1130,13 +1124,9 @@
                 </option>
               </select>
               <select name="parent_id" id="createParent">
-                <option value="">
-                  Parent ID
-                </option>
+                <option value="">Parent ID (Optional)</option>
               </select>
-              <select name="field_officer_id" id="createFieldOfficer">
-                <option value="">Field Officer ID (Required for Officer / Supervisor / Guard)</option>
-              </select>
+              <small class="muted-note">Supervisor: Field Officer Parent ID + Location Code required. Guard: Supervisor Parent ID + same Location Code required.</small>
               <input name="contact_number" placeholder="Contact Number">
               <button class="action primary-action">
                 Create Member
@@ -1151,9 +1141,6 @@
                 <select id="memberRoleFilter">
                   <option value="field_officer">
                     Field Officer
-                  </option>
-                  <option value="officer">
-                    Officer
                   </option>
                   <option value="supervisor">
                     Supervisor
@@ -1399,13 +1386,13 @@
                   Admin
                 </option>
                 <option value="field_officer">
-                  Field Officer (Parent: Admin / Master Admin)
+                  Field Officer
                 </option>
                 <option value="supervisor">
-                  Supervisor (Parent: Field Officer)
+                  Supervisor
                 </option>
                 <option value="guard">
-                  Guard (Parent: Supervisor)
+                  Guard
                 </option>
                 <option value="all">
                   All Staff
@@ -1890,6 +1877,10 @@
       // LOCATION MANAGEMENT BUTTON
         document.getElementById('locationManagementBtn')?.addEventListener('click', function () {
           window.location.href = 'location-management.html';
+        });
+        // SHIFT SCHEDULE NAVIGATION
+        document.getElementById('shiftScheduleBtn')?.addEventListener('click', function () {
+          window.location.href = 'shift-schedule.html';
         });
     </script>
   </body>

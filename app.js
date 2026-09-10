@@ -37,17 +37,34 @@ function msg(t){const x=$('#status');if(x){x.textContent=t;x.style.display='bloc
 
 function escape(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 renderTopProfile();
-let staff=[];
+const createRoleSelect=$('form[data-type="staff"] select[name="role"]');
 
-// Only Admin and Master Admin may create accounts. Remove creation forms elsewhere.
-if(!['admin','master_admin'].includes(user?.role)){
-  $$('form[data-type="staff"]').forEach(f=>{
-    const panel=f.closest('.panel');
-    if(panel){ panel.innerHTML='<p class="muted-note"><b>View only:</b> Only Admin or Master Admin can create staff accounts.</p>'; }
-    else f.remove();
-  });
+// =====================================================
+// SECTION: STAFF CREATION UI HIERARCHY
+// Master Admin -> Admin -> Field Officer -> Supervisor -> Guard
+// =====================================================
+if(createRoleSelect){
+  // Only Master Admin and Admin can create members.
+  // Master Admin can create Admin/Field Officer/Supervisor/Guard.
+  // Admin can create Field Officer/Supervisor/Guard.
+  const allowedByRole={
+    master_admin:['admin','field_officer','supervisor','guard'],
+    admin:['field_officer','supervisor','guard']
+  };
+  const allowed=allowedByRole[user?.role]||[];
+  [...createRoleSelect.options].forEach(o=>{ if(!allowed.includes(o.value)) o.remove(); });
+  if(allowed.length) createRoleSelect.value=allowed[0];
 }
 
+// Dedicated role pages must always send the logged-in parent ID.
+const staffCreateForm=$('form[data-type="staff"]');
+if(staffCreateForm && ['field_officer','supervisor'].includes(user?.role)){
+  const parentInput=staffCreateForm.querySelector('input[name="parent_id"]');
+  if(parentInput) parentInput.value=user.staff_id||'';
+}
+
+// END SECTION: STAFF CREATION UI HIERARCHY
+let staff=[];
 
 // =====================================================
 
@@ -105,9 +122,15 @@ async function loadPremiumDashboard(stats){
 // =====================================================
 
 async function refresh(){try{await loadLocationConfigs(); populateLocationSelects(); fillAutoAttendance(); const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;
-if(role==='field_officer'){const x=$('#createOfficerParent');if(x)x.value=user.staff_id;const l=$('#createOfficerLocation');if(l)l.value=user.location_code||'';const b=$('#myOfficerRows');if(b)b.innerHTML=staff.filter(x=>x.role==='officer'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Officers found.</td></tr>';}
-if(role==='officer'){const x=$('#createSupervisorParent');if(x)x.value=user.staff_id;const l=$('#createSupervisorLocation');if(l)l.value=user.location_code||'';const b=$('#mySupervisorRows');if(b)b.innerHTML=staff.filter(x=>x.role==='supervisor'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';}
-window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();}catch(e){console.log(e.message)}}
+if(role==='field_officer'){
+  const x=$('#createSupervisorParent'); if(x)x.value=user.staff_id;
+  const b=$('#mySupervisorRows');
+  if(b)b.innerHTML=staff.filter(x=>x.role==='supervisor'&&x.parent_id===user.staff_id)
+    .map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`)
+    .join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';
+}
+// END SECTION: FIELD OFFICER SUPERVISOR LIST
+window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();}catch(e){console.log(e.message)}}
 
 // END SECTION: FUNCTION refresh
 
@@ -291,24 +314,19 @@ function renderStaff(list){
 // =====================================================
 
 function fillCreateParent(list){
-  const roleSel=$('form[data-type="staff"] select[name="role"]'), locSel=$('#createLocation'), parentSel=$('#createParent'), foSel=$('#createFieldOfficer');
-  if(!roleSel||!parentSel)return;
+  const form=$('form[data-type="staff"]');
+  const roleSel=form?.querySelector('select[name="role"]');
+  const locSel=$('#createLocation'), parentSel=$('#createParent');
+  if(!form||!roleSel||!parentSel)return;
   const roleVal=roleSel.value, loc=locSel?.value||'';
   let parents=[];
-  if(roleVal==='field_officer')parents=list.filter(s=>['admin','master_admin'].includes(s.role));
-  if(roleVal==='officer' || roleVal==='supervisor')parents=list.filter(s=>s.role==='field_officer');
-  if(roleVal==='guard')parents=list.filter(s=>s.role==='supervisor' && (!loc||s.location_code===loc));
-  if(roleVal==='admin')parents=[];
-  parentSel.innerHTML='<option value="">Parent ID / Supervisor ID</option>'+parents.map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${escape(s.staff_id)}${s.location_code?' • '+escape(s.location_code):''}</option>`).join('');
-  if(foSel){
-    const fos=list.filter(s=>s.role==='field_officer' && s.status!=='inactive');
-    foSel.innerHTML='<option value="">Field Officer ID'+(['officer','supervisor','guard'].includes(roleVal)?' (Required)':' (Not required)')+'</option>'+fos.map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${escape(s.staff_id)}</option>`).join('');
-    foSel.required=['officer','supervisor','guard'].includes(roleVal);
-    foSel.disabled=['admin','field_officer'].includes(roleVal);
-    if(foSel.disabled)foSel.value='';
-    if((roleVal==='officer'||roleVal==='supervisor') && parentSel.value)foSel.value=parentSel.value;
-  }
+  // Supervisor: only a Field Officer who owns the selected location can be parent.
+  if(roleVal==='supervisor') parents=list.filter(s=>s.role==='field_officer' && (!loc || (s.assigned_locations||[]).includes(loc)));
+  // Guard: only a Supervisor at the selected location can be parent.
+  if(roleVal==='guard') parents=list.filter(s=>s.role==='supervisor' && (!loc||String(s.location_code||'')===String(loc)));
+  parentSel.innerHTML='<option value="">'+(roleVal==='supervisor'?'Select Field Officer Parent ID':roleVal==='guard'?'Select Supervisor Parent ID':'Parent ID (Optional)')+'</option>'+parents.map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${escape(s.staff_id)}${(s.assigned_locations||[]).length?' • '+escape(s.assigned_locations.join(', ')):s.location_code?' • '+escape(s.location_code):''}</option>`).join('');
 }
+
 
 // END SECTION: FUNCTION fillCreateParent
 
@@ -352,7 +370,7 @@ function renderProfileRecords(list){
   b.innerHTML=rows.map(s=>`<tr>
     <td><img class="profile-thumb" src="${escape(s.dp||s.photo_front||'assets-logo.png')}" alt="Profile"></td>
     <td>${label(s.role)}</td><td>${escape(s.name)}</td><td><b>${escape(s.staff_id)}</b></td>
-    <td>${escape(s.location_code||'—')}</td><td>${escape(s.parent_id||'—')}</td>
+    <td>${escape((s.assigned_locations||[]).join(', ')||s.location_code||'—')}</td><td>${escape(s.parent_id||'—')}</td>
     <td>${escape(s.post||'')}</td><td>${escape(s.contact_number||'—')}</td>
     <td><small>Age: ${escape(s.age||'—')} • H: ${escape(s.height||'—')} • W: ${escape(s.weight||'—')}<br>
       Blood: ${escape(s.blood_group||'—')} • Qual: ${escape(s.qualification||'—')}<br>
@@ -576,7 +594,15 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       if(!Number.isFinite(d.amount)||d.amount<=0)throw Error('Enter a valid Fine Amount');
       delete d.reason_select; delete d.reason_custom;
     }
-    if(form.dataset.type==='staff')await api('/staff',{method:'POST',body:JSON.stringify(d)});
+    if(form.dataset.type==='staff'){
+      // Only Admin and Master Admin can create members. Parent rules are role-specific.
+      if(!['admin','master_admin'].includes(user?.role)) throw Error('Only Admin or Master Admin can create members');
+      if(['supervisor','guard'].includes(d.role) && !String(d.location_code||'').trim())
+        throw Error(`Location Code is required for ${d.role}`);
+      if(['supervisor','guard'].includes(d.role) && !String(d.parent_id||'').trim())
+        throw Error(`Parent ID is required for ${d.role}`);
+      await api('/staff',{method:'POST',body:JSON.stringify(d)});
+    }
     if(form.dataset.type==='fine')await api('/fines',{method:'POST',body:JSON.stringify(d)});
     if(form.dataset.type==='advance')await api('/advances',{method:'POST',body:JSON.stringify(d)});
     if(form.dataset.type==='notice')await api('/notices',{method:'POST',body:JSON.stringify(d)});
@@ -611,7 +637,6 @@ $('#downloadAttendanceMatrix')?.addEventListener('click',()=>{const m=$('#attend
 $('#attendanceMonth')?.addEventListener('change',()=>{if(isAdminRole)refresh()});$('#dailyDate')?.setAttribute('value',new Date().toISOString().slice(0,10));$('#attendanceMonth')?.setAttribute('value',new Date().toISOString().slice(0,7));$('#dailyDate')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));$('#dailyLocation')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#dailyIdSearch')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#attendanceIdSearch')?.addEventListener('input',()=>renderAttendance(window._attendanceRows||[]));window.downloadAttendanceMonth=(r)=>{const m=$('#attendanceMonth')?.value;if(!m)return alert('Select a month first');downloadAttendance(r,'',m)};
 $('form[data-type="staff"] select[name="role"]')?.addEventListener('change',()=>fillCreateParent(staff));
 $('#createLocation')?.addEventListener('change',()=>fillCreateParent(staff));
-$('#createParent')?.addEventListener('change',e=>{const r=$('#createRole')?.value,fo=$('#createFieldOfficer');if(fo&&['officer','supervisor'].includes(r))fo.value=e.target.value;});
 $('#profileRoleFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
 $('#profileLocationFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
 $('#downloadProfileUpdateSheet')?.addEventListener('click',()=>{
@@ -641,7 +666,7 @@ function setupAttendanceFilters(){updateShiftDropdown('#attendanceShift','#atten
 setupAttendanceFilters();
 $('#attendanceRoleFilter')?.addEventListener('change',()=>renderAttendance(window._attendanceRows||[]));
 $('#accountRoleFilter')?.addEventListener('change',()=>loadPayroll());
-$('#memberRoleFilter')?.addEventListener('change',()=>filterMemberLists());$('#createRole')?.addEventListener('change',()=>{ if(!isAdminRole)return; });
+$('#memberRoleFilter')?.addEventListener('change',()=>filterMemberLists());$('#createRole')?.addEventListener('change',()=>{ if(!isAdminRole)return; fillCreateParent(staff); });
 if(user?.role!=='master_admin'){ $('#createRole')?.querySelector('.master-only-option')?.remove(); }
 if(user?.role==='master_admin'){ const x=$('#dashboardRoleLabel'); if(x)x.textContent='SNDF MASTER ADMIN'; const note=document.querySelector('#staff .muted-note'); if(note)note.textContent='Master Admin can create Admin, Field Officer, Supervisor and Guard. Normal Admin cannot create another Admin.'; }
 
@@ -1079,7 +1104,8 @@ if(['guard','supervisor'].includes(role)){
 $('#logout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser');location.href='index.html'});
 loadProfile();refresh();
 if($('#p_staff_id')) $('#p_staff_id').value=user.staff_id;
-if(!isAdminRole){ $('#staff')?.remove(); $('#advance')?.remove(); $('#suspend')?.remove(); $('#profile-records')?.remove(); }
+if(!isAdminRole && !['field_officer','supervisor'].includes(role)){ $('#staff')?.remove(); $('#advance')?.remove(); $('#suspend')?.remove(); $('#profile-records')?.remove(); }
+if(role==='field_officer'){$('#team-management form[data-type="staff"]')?.remove();$('#team-management h3')?.remove();$('#team-management .muted-note')?.remove();}
 if(!isAdminRole) $$('[onclick^="downloadAttendance"]').forEach(b=>b.remove());
 if(!['admin','field_officer','officer'].includes(role)) $('#fine')?.querySelector('.fine-form')?.remove();
 if(isAdminRole) $('#fine')?.querySelector('.fine-form')?.insertAdjacentHTML('afterend','<p>Admin may fine Guard or Supervisor.</p>');
