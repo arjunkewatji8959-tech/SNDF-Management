@@ -365,3 +365,166 @@ button.action:hover {
 @media (max-width:700px){
   .action,.top-logout,button.action { border-radius:10px !important; padding:10px 13px !important; }
 }
+
+
+/* ============================================================
+   SNDF BLUE & WHITE PROFESSIONAL THEME
+   - Dark blue navigation and primary actions
+   - White workspace and clean cards
+   - Consistent button styling across every role
+   ============================================================ */
+
+:root{
+  --sndf-blue:#0b4f8a;
+  --sndf-blue-dark:#07345f;
+  --sndf-blue-mid:#1769aa;
+  --sndf-blue-light:#e8f3ff;
+  --sndf-white:#ffffff;
+  --sndf-text:#12304d;
+  --sndf-border:#bfd8ee;
+}
+
+/* Main dashboard background */
+body{
+  background:#f5f9fd !important;
+  color:var(--sndf-text) !important;
+}
+
+/* Dark blue dashboard header */
+.appbar{
+  background:linear-gradient(135deg,#07345f 0%,#0b4f8a 60%,#1769aa 100%) !important;
+}
+
+/* Dark blue sidebar */
+.sidebar{
+  background:linear-gradient(180deg,#07345f 0%,#0b4f8a 100%) !important;
+}
+
+/* Sidebar menu buttons: consistent blue/white appearance */
+.sidebar button[data-view],
+.sidebar .location-management-btn,
+.sidebar .exit{
+  background:#0b4f8a !important;
+  color:#fff !important;
+  border:1px solid rgba(255,255,255,.14) !important;
+}
+
+.sidebar button[data-view]:hover,
+.sidebar .location-management-btn:hover,
+.sidebar .exit:hover,
+.sidebar button[data-view].active{
+  background:#1769aa !important;
+  color:#fff !important;
+  box-shadow:0 6px 16px rgba(0,0,0,.16);
+}
+
+/* All normal action buttons */
+button.action,
+button.btn,
+input[type="submit"],
+input[type="button"],
+button.primary-action,
+.btn-primary,
+.login-button{
+  background:#0b4f8a !important;
+  color:#fff !important;
+  border:1px solid #07345f !important;
+  font-weight:700;
+}
+
+button.action:hover,
+button.btn:hover,
+input[type="submit"]:hover,
+input[type="button"]:hover,
+button.primary-action:hover,
+.btn-primary:hover,
+.login-button:hover{
+  background:#07345f !important;
+  color:#fff !important;
+}
+
+/* White cards/panels */
+.panel,
+.dash-hero,
+.stat,
+.premium-card,
+.premium-panel{
+  background:#fff !important;
+  border-color:var(--sndf-border) !important;
+}
+
+/* Premium heading */
+.premium-overview h2{
+  color:#07345f !important;
+  font-weight:800 !important;
+}
+
+/* Premium card accent */
+.premium-card{
+  border-left:4px solid #0b4f8a !important;
+}
+
+/* Sidebar profile controls - now inside the mobile/sidebar menu */
+.sidebar-profile{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:8px 10px 12px;
+  margin-bottom:6px;
+  border-bottom:1px solid rgba(255,255,255,.16);
+}
+
+.sidebar-profile .app-user{
+  width:100%;
+  justify-content:flex-start;
+  background:#fff !important;
+  color:#07345f !important;
+  border:0 !important;
+  border-radius:10px;
+  padding:9px 10px;
+}
+
+.sidebar-profile .app-user:hover{
+  background:#e8f3ff !important;
+}
+
+.sidebar-profile .top-logout{
+  width:100%;
+  background:#0b4f8a !important;
+  color:#fff !important;
+  border:1px solid rgba(255,255,255,.25) !important;
+  border-radius:10px;
+  padding:10px 12px;
+}
+
+.sidebar-profile .top-logout:hover{
+  background:#1769aa !important;
+}
+
+/* Remove the old top-right profile area if any old markup remains. */
+.appbar .app-profile-wrap{
+  display:none !important;
+}
+
+/* Landing page Login button: dark blue and clearly visible on the right. */
+.site-nav .login-button{
+  background:#07345f !important;
+  color:#fff !important;
+  border:1px solid #052747 !important;
+  border-radius:10px;
+  padding:10px 18px;
+  font-weight:800;
+  box-shadow:0 5px 14px rgba(7,52,95,.20);
+}
+
+.site-nav .login-button:hover{
+  background:#0b4f8a !important;
+  color:#fff !important;
+}
+
+/* On mobile the sidebar profile/logout remains inside the opened menu. */
+@media(max-width:900px){
+  .sidebar-profile{
+    display:flex;
+  }
+}

@@ -11,12 +11,35 @@ function label(r){return {master_admin:'Master Admin',admin:'Admin',field_office
 const isAdminRole=['admin','master_admin'].includes(role);
 function renderTopProfile(u=user){const r=u?.role||role;$$('.app-user').forEach(x=>{const dp=u?.dp||'assets-logo.png';x.innerHTML=`<img class="app-avatar" src="${escape(dp)}" alt="Profile"><div class="app-user-text"><b>${escape(u?.name||'')}</b><small>${escape(u?.staff_id||'')} • ${label(r)}</small></div>`});['welcomeName','welcomeProfileName'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.name||label(r)});['welcomeId','welcomeProfileId'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.staff_id||''});['welcomeRole','welcomeProfileRole'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=label(r)});const wd=$('#welcomeDp');if(wd)wd.src=u?.dp||'assets-logo.png';const pd=$('#p_dp_preview');if(pd)pd.src=u?.dp||'assets-logo.png';const pt=$('#p_profile_title');if(pt)pt.textContent=(u?.name||'Admin')+' Profile';}
 
+// ============================================================
+// HOME-ONLY PREMIUM DASHBOARD ACCESS
+// Visible only to Master Admin, Admin and Field Officer.
+// It is never shown inside Attendance, Fine, Account, etc.
+// ============================================================
+const PREMIUM_ROLES = ['admin', 'master_admin', 'field_officer'];
+
 function showView(viewId){
-  // Keep exactly one dashboard section visible at a time.
+  // Hide every section first so only the selected page is visible.
   $$('.view').forEach(v=>v.classList.add('hidden'));
+
+  // Show the requested section.
   const target=$('#'+viewId);
   if(target) target.classList.remove('hidden');
+
+  // Premium Dashboard is strictly limited to Home + approved roles.
+  $$('.premium-overview').forEach(dashboard=>{
+    const insideHome = !!dashboard.closest('#home');
+    const allowedRole = PREMIUM_ROLES.includes(role);
+    dashboard.classList.toggle(
+      'hidden',
+      !(viewId === 'home' && insideHome && allowedRole)
+    );
+  });
+
+  // Highlight the active sidebar menu item.
   $$('[data-view]').forEach(z=>z.classList.toggle('active', z.dataset.view===viewId));
+
+  // Close mobile sidebar after navigation.
   $('.sidebar')?.classList.remove('open');
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -34,7 +57,11 @@ const createRoleSelect=$('form[data-type="staff"] select[name="role"]');
 if(createRoleSelect && user?.role!=='master_admin') [...createRoleSelect.options].filter(o=>o.value==='admin').forEach(o=>o.remove());
 let staff=[];
 
+// Render the Premium Dashboard only for approved roles and only on Home.
 async function loadPremiumDashboard(stats){
+  if(!PREMIUM_ROLES.includes(role)) return;
+  if(!$('#home') || $('#home').classList.contains('hidden')) return;
+
   try{
     const set=(id,v)=>{const x=$('#'+id);if(x)x.textContent=v??0};
     set('premiumTotalGuards',stats.total_guards);
@@ -77,7 +104,7 @@ async function loadPremiumDashboard(stats){
 async function refresh(){try{await loadLocationConfigs(); populateLocationSelects(); fillAutoAttendance(); const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;
 if(role==='field_officer'){const x=$('#createOfficerParent');if(x)x.value=user.staff_id;const l=$('#createOfficerLocation');if(l)l.value=user.location_code||'';const b=$('#myOfficerRows');if(b)b.innerHTML=staff.filter(x=>x.role==='officer'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Officers found.</td></tr>';}
 if(role==='officer'){const x=$('#createSupervisorParent');if(x)x.value=user.staff_id;const l=$('#createSupervisorLocation');if(l)l.value=user.location_code||'';const b=$('#mySupervisorRows');if(b)b.innerHTML=staff.filter(x=>x.role==='supervisor'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';}
-window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();}catch(e){console.log(e.message)}}
+window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);if(PREMIUM_ROLES.includes(role)) await loadPremiumDashboard(stats);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();}catch(e){console.log(e.message)}}
 
 async function loadPointTransfers(){
   const table=$('#pointTransferRows'), mine=$('#myTransferRows');
