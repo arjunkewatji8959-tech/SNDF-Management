@@ -254,15 +254,19 @@ function downloadUrl(path,filename){
 }
 
 fillAutoAttendance(); getLiveGPS(); startLiveCamera();
-$('#fineReason')?.addEventListener('change',e=>{const opt=e.target.selectedOptions[0];const amount=opt?.dataset?.amount||'';const x=$('#fineAmount');if(x)x.value=amount;});
+$('#fineReason')?.addEventListener('change',e=>{const opt=e.target.selectedOptions[0];const amount=opt?.dataset?.amount||'';const x=$('#fineAmount');if(x && amount)x.value=amount;const custom=$('#fineCustomReason');if(custom && e.target.value)custom.value='';});
 $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
   e.preventDefault();
   const d=Object.fromEntries(new FormData(form));
   try{
     if(form.dataset.type==='fine'){
-      const amountEl=form.querySelector('select[name="amount"]');
-      d.amount=Number(amountEl?.value||0);
-      if(!d.amount)throw Error('Select a Fine Reason; amount will be filled automatically');
+      const selectedReason=d.reason_select||'';
+      const customReason=(d.reason_custom||'').trim();
+      d.reason=customReason||selectedReason;
+      d.amount=Number(d.amount||0);
+      if(!d.reason)throw Error('Select a Fine Reason or enter a custom reason');
+      if(!Number.isFinite(d.amount)||d.amount<=0)throw Error('Enter a valid Fine Amount');
+      delete d.reason_select; delete d.reason_custom;
     }
     if(form.dataset.type==='staff')await api('/staff',{method:'POST',body:JSON.stringify(d)});
     if(form.dataset.type==='fine')await api('/fines',{method:'POST',body:JSON.stringify(d)});
