@@ -328,3 +328,40 @@ input[type="button"]:hover,input[type="submit"]:hover{
   button,.btn,.action,.nav-btn,.download-btn,.payment-done,.location-management-btn,
   input[type="button"],input[type="submit"]{min-height:40px;border-radius:10px}
 }
+
+
+/* =====================================================
+   FINAL UI PATCH | LIGHT BLUE BUTTONS + SINGLE VIEW
+   ===================================================== */
+.action,
+.action.primary-action,
+.action.success,
+.action.danger,
+.top-logout,
+.profile-view-actions button,
+button.action {
+  background: #8ec5f5 !important;
+  color: #08345f !important;
+  border: 1px solid #6eafe8 !important;
+  box-shadow: 0 3px 10px rgba(30,110,180,.12);
+}
+.action:hover,
+.action.primary-action:hover,
+.action.success:hover,
+.action.danger:hover,
+.top-logout:hover,
+button.action:hover {
+  background: #a9d6fa !important;
+  color: #062f57 !important;
+  transform: translateY(-1px);
+}
+.sidebar button.active,
+.sidebar button:hover {
+  background: #8ec5f5 !important;
+  color: #07345d !important;
+}
+.app-user { display:flex !important; }
+.top-logout { border-radius: 10px !important; }
+@media (max-width:700px){
+  .action,.top-logout,button.action { border-radius:10px !important; padding:10px 13px !important; }
+}

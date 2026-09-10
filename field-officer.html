@@ -13,31 +13,7 @@
 <div><small>Shift</small><b id="autoShift">—</b></div><div><small>Location Duty Hours</small><b id="autoDutyHours">—</b></div>
 </div>
 <div class="attendance-actions main-attendance-actions"><button type="button" id="checkIn" class="action success">✓ Check In</button><button type="button" id="checkOut" class="action">✓ Check Out</button></div>
-<small class="muted-note">Information, Location Code, Parent ID and Shift automatically fill from your profile/device. User only takes photo and presses Check In / Check Out.</small></div><div class="premium-overview">
-  <div class="premium-overview-head">
-    <div><span class="eyebrow">SNDF • LIVE OPERATIONS</span><h2>Premium Dashboard Overview</h2></div>
-    <span class="live-badge">● LIVE</span>
-  </div>
-  <div class="premium-cards">
-    <div class="premium-card"><span class="pc-icon">👮</span><div><small>Total Guards</small><strong id="premiumTotalGuards">0</strong></div></div>
-    <div class="premium-card"><span class="pc-icon">🟢</span><div><small>On Duty</small><strong id="premiumOnDuty">0</strong></div></div>
-    <div class="premium-card"><span class="pc-icon">🔴</span><div><small>Absent</small><strong id="premiumAbsent">0</strong></div></div>
-    <div class="premium-card"><span class="pc-icon">🔄</span><div><small>Relievers</small><strong id="premiumRelievers">0</strong></div></div>
-    <div class="premium-card"><span class="pc-icon">📍</span><div><small>Active Sites</small><strong id="premiumActiveSites">0</strong></div></div>
-    <div class="premium-card"><span class="pc-icon">💰</span><div><small>Monthly Payroll</small><strong id="premiumPayroll">₹0</strong></div></div>
-  </div>
-  <div class="premium-grid">
-    <div class="premium-panel"><h3>📊 Attendance Chart</h3><div class="mini-chart"><div><span>Present</span><b id="chartPresentText">0</b></div><div class="chart-track"><i id="chartPresentBar"></i></div><div><span>Absent</span><b id="chartAbsentText">0</b></div><div class="chart-track"><i id="chartAbsentBar"></i></div></div></div>
-    <div class="premium-panel"><h3>📍 Site Status</h3><div id="premiumSiteStatus" class="site-status-list"><p class="muted-note">Loading site status…</p></div></div>
-    <div class="premium-panel"><h3>🕒 Recent Activities</h3><div id="premiumRecentActivities" class="activity-list"><p class="muted-note">Loading activities…</p></div></div>
-    <div class="premium-panel"><h3>🔔 Notifications</h3><div id="premiumNotifications" class="activity-list"><p class="muted-note">Loading notifications…</p></div></div>
-  </div>
-<div class="premium-panel field-officer-team-panel" id="fieldOfficerTeamPanel">
-<h3>👥 Today’s Guard & Supervisor Attendance</h3>
-<div class="team-summary" id="fieldOfficerTeamSummary"><span>Loading today’s attendance…</span></div>
-<div class="table-wrap team-home-table"><table><thead><tr><th>Photo</th><th>Name</th><th>ID</th><th>Role</th><th>Location</th><th>Shift</th><th>Check In</th><th>Check Out</th><th>Status</th></tr></thead><tbody id="fieldOfficerTeamRows"><tr><td colspan="9">Loading…</td></tr></tbody></table></div>
-</div>
-</div>
+<small class="muted-note">Information, Location Code, Parent ID and Shift automatically fill from your profile/device. User only takes photo and presses Check In / Check Out.</small></div>
 
 </section>
 <section id="attendance" class="view hidden"><h2>Attendance</h2><div class="panel"><p>Download separate attendance sheets:</p><button class="action" onclick="downloadAttendance('admin')">Admin Sheet</button> <button class="action" onclick="downloadAttendance('field_officer')">Field Officer Sheet</button> <button class="action" onclick="downloadAttendance('supervisor')">Supervisor Sheet</button> <button class="action" onclick="downloadAttendance('guard')">Guard Sheet</button></div><div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Role</th><th>Staff ID</th><th>Name</th><th>Shift</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th><th>Action</th></tr></thead><tbody id="attendanceRows"></tbody></table></div></section>

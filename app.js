@@ -11,7 +11,20 @@ function label(r){return {master_admin:'Master Admin',admin:'Admin',field_office
 const isAdminRole=['admin','master_admin'].includes(role);
 function renderTopProfile(u=user){const r=u?.role||role;$$('.app-user').forEach(x=>{const dp=u?.dp||'assets-logo.png';x.innerHTML=`<img class="app-avatar" src="${escape(dp)}" alt="Profile"><div class="app-user-text"><b>${escape(u?.name||'')}</b><small>${escape(u?.staff_id||'')} • ${label(r)}</small></div>`});['welcomeName','welcomeProfileName'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.name||label(r)});['welcomeId','welcomeProfileId'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.staff_id||''});['welcomeRole','welcomeProfileRole'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=label(r)});const wd=$('#welcomeDp');if(wd)wd.src=u?.dp||'assets-logo.png';const pd=$('#p_dp_preview');if(pd)pd.src=u?.dp||'assets-logo.png';const pt=$('#p_profile_title');if(pt)pt.textContent=(u?.name||'Admin')+' Profile';}
 
-$('#appUser')?.addEventListener('click',()=>{ $$('[data-view]').forEach(z=>z.classList.remove('active')); $$('.view').forEach(v=>v.classList.add('hidden')); $('#profile')?.classList.remove('hidden'); $('.sidebar')?.classList.remove('open'); }); $$('[data-view]').forEach((b,i)=>{b.onclick=()=>{ $$('.view').forEach(v=>v.classList.add('hidden')); $('#'+b.dataset.view)?.classList.remove('hidden');$$('[data-view]').forEach(z=>z.classList.remove('active'));b.classList.add('active');$('.sidebar')?.classList.remove('open')};if(i===0)b.classList.add('active')});
+function showView(viewId){
+  // Keep exactly one dashboard section visible at a time.
+  $$('.view').forEach(v=>v.classList.add('hidden'));
+  const target=$('#'+viewId);
+  if(target) target.classList.remove('hidden');
+  $$('[data-view]').forEach(z=>z.classList.toggle('active', z.dataset.view===viewId));
+  $('.sidebar')?.classList.remove('open');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+$('#appUser')?.addEventListener('click',()=>showView('profile'));
+$$('[data-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
+// Explicitly start on Home so other sections can never appear together with the dashboard.
+showView('home');
+
 $('.mobile-toggle')?.addEventListener('click',()=>$('.sidebar')?.classList.toggle('open'));
 async function api(path,opt={}){const r=await fetch(API_URL+path,{headers:{'Content-Type':'application/json','x-staff-id':user.staff_id,'x-role':user.role,...(opt.headers||{})},...opt});const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{throw Error('Backend response error')};if(!r.ok)throw Error(d.error||'Request failed');return d}
 function msg(t){const x=$('#status');if(x){x.textContent=t;x.style.display='block';setTimeout(()=>x.style.display='none',2500)}}
