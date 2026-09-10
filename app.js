@@ -11,12 +11,26 @@ function label(r){return {master_admin:'Master Admin',admin:'Admin',field_office
 const isAdminRole=['admin','master_admin'].includes(role);
 function renderTopProfile(u=user){const r=u?.role||role;$$('.app-user').forEach(x=>{const dp=u?.dp||'assets-logo.png';x.innerHTML=`<img class="app-avatar" src="${escape(dp)}" alt="Profile"><div class="app-user-text"><b>${escape(u?.name||'')}</b><small>${escape(u?.staff_id||'')} • ${label(r)}</small></div>`});['welcomeName','welcomeProfileName'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.name||label(r)});['welcomeId','welcomeProfileId'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.staff_id||''});['welcomeRole','welcomeProfileRole'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=label(r)});const wd=$('#welcomeDp');if(wd)wd.src=u?.dp||'assets-logo.png';const pd=$('#p_dp_preview');if(pd)pd.src=u?.dp||'assets-logo.png';const pt=$('#p_profile_title');if(pt)pt.textContent=(u?.name||'Admin')+' Profile';}
 
+/* =====================================================
+   NAVIGATION | ONE SECTION AT A TIME
+   Premium Dashboard is allowed only inside Home and only
+   for Master Admin, Admin and Field Officer roles.
+   ===================================================== */
 function showView(viewId){
-  // Keep exactly one dashboard section visible at a time.
+  // Hide every page section before opening the requested section.
   $$('.view').forEach(v=>v.classList.add('hidden'));
+
   const target=$('#'+viewId);
   if(target) target.classList.remove('hidden');
+
+  // Extra safety: never show the Premium Dashboard outside Home.
+  $$('.premium-overview').forEach(dashboard=>{
+    dashboard.classList.toggle('hidden', viewId!=='home');
+  });
+
+  // Highlight only the currently selected navigation button.
   $$('[data-view]').forEach(z=>z.classList.toggle('active', z.dataset.view===viewId));
+
   $('.sidebar')?.classList.remove('open');
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -30,11 +44,26 @@ async function api(path,opt={}){const r=await fetch(API_URL+path,{headers:{'Cont
 function msg(t){const x=$('#status');if(x){x.textContent=t;x.style.display='block';setTimeout(()=>x.style.display='none',2500)}}
 function escape(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 renderTopProfile();
+
+/* =====================================================
+   PREMIUM DASHBOARD ACCESS CONTROL
+   Allowed roles: Master Admin, Admin, Field Officer.
+   The dashboard is removed from the DOM for all other roles.
+   ===================================================== */
+const PREMIUM_ROLES=['master_admin','admin','field_officer'];
+if(!PREMIUM_ROLES.includes(role)){
+  $$('.premium-overview').forEach(x=>x.remove());
+}
 const createRoleSelect=$('form[data-type="staff"] select[name="role"]');
 if(createRoleSelect && user?.role!=='master_admin') [...createRoleSelect.options].filter(o=>o.value==='admin').forEach(o=>o.remove());
 let staff=[];
 
+/* =====================================================
+   PREMIUM DASHBOARD DATA
+   Populates only the Home dashboard for approved roles.
+   ===================================================== */
 async function loadPremiumDashboard(stats){
+  if(!PREMIUM_ROLES.includes(role) || !$('#home') || $('#home').classList.contains('hidden')) return;
   try{
     const set=(id,v)=>{const x=$('#'+id);if(x)x.textContent=v??0};
     set('premiumTotalGuards',stats.total_guards);
@@ -77,7 +106,12 @@ async function loadPremiumDashboard(stats){
 async function refresh(){try{await loadLocationConfigs(); populateLocationSelects(); fillAutoAttendance(); const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;
 if(role==='field_officer'){const x=$('#createOfficerParent');if(x)x.value=user.staff_id;const l=$('#createOfficerLocation');if(l)l.value=user.location_code||'';const b=$('#myOfficerRows');if(b)b.innerHTML=staff.filter(x=>x.role==='officer'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Officers found.</td></tr>';}
 if(role==='officer'){const x=$('#createSupervisorParent');if(x)x.value=user.staff_id;const l=$('#createSupervisorLocation');if(l)l.value=user.location_code||'';const b=$('#mySupervisorRows');if(b)b.innerHTML=staff.filter(x=>x.role==='supervisor'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';}
-window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();}catch(e){console.log(e.message)}}
+window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);
+
+// Load Premium Dashboard data only for Master Admin/Admin/Field Officer.
+if(PREMIUM_ROLES.includes(role) && $('#home')?.classList.contains('hidden')===false){
+  await loadPremiumDashboard(stats);
+}fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();}catch(e){console.log(e.message)}}
 
 async function loadPointTransfers(){
   const table=$('#pointTransferRows'), mine=$('#myTransferRows');

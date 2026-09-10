@@ -365,3 +365,90 @@ button.action:hover {
 @media (max-width:700px){
   .action,.top-logout,button.action { border-radius:10px !important; padding:10px 13px !important; }
 }
+
+/* =====================================================
+   SNDF FINAL VISUAL THEME
+   1) Softer blue palette (less dark/strong blue)
+   2) Light-blue buttons inside dashboard/panels
+   3) Premium Dashboard is visually tied to Home
+   ===================================================== */
+:root{
+  --navy:#123b63;
+  --blue:#4f8fc5;
+  --sky:#eef7ff;
+  --line:#d7e6f3;
+}
+
+/* Softer header/sidebar blue */
+.appbar{
+  background:linear-gradient(90deg,#16466f,#2f6d9d);
+}
+.sidebar{
+  background:linear-gradient(#16466f,#123b63);
+}
+.sidebar button:hover,
+.sidebar button.active{
+  background:#3d79a8;
+}
+
+/* Light-blue dashboard/panel buttons */
+.panel button,
+.view button.action,
+.premium-overview button,
+.action{
+  background:#dceeff !important;
+  color:#24577f !important;
+  border:1px solid #b9d9f2 !important;
+  box-shadow:none;
+  font-weight:700;
+}
+.panel button:hover,
+.view button.action:hover,
+.premium-overview button:hover,
+.action:hover{
+  background:#cbe5fa !important;
+  color:#174b73 !important;
+  border-color:#9fc8e8 !important;
+}
+
+/* Keep danger/success meaning without strong red/green fills.
+   Status is still conveyed by text/icon where used. */
+.panel button.danger,
+.panel button.success,
+.view button.danger,
+.view button.success{
+  background:#dceeff !important;
+  color:#24577f !important;
+}
+
+/* Softer public-page blue buttons */
+.btn-primary{
+  background:#5b9bcf !important;
+}
+.btn-primary:hover{
+  background:#4b8cbe !important;
+}
+
+/* Light-blue top logout */
+.top-logout{
+  background:#dceeff !important;
+  color:#24577f !important;
+  border:1px solid #b9d9f2 !important;
+}
+
+/* Ensure Premium Dashboard can NEVER remain visible outside Home. */
+.view.hidden .premium-overview,
+.premium-overview.dashboard-not-home{
+  display:none !important;
+}
+
+/* Mobile: same soft button theme */
+@media(max-width:850px){
+  .panel button,
+  .view button.action,
+  .premium-overview button,
+  .action{
+    background:#e1f1ff !important;
+    color:#24577f !important;
+  }
+}

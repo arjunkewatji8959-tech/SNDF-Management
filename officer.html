@@ -1,96 +1,1177 @@
-<!-- =====================================================
-     SNDF MANAGEMENT | PAGE SECTIONS
-     File-level guide: keep each feature inside its marked section.
-     ===================================================== -->
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SNDF Officer Dashboard</title><link rel="stylesheet" href="style.css"></head><body data-role="officer"><header class="appbar"><a class="brand" href="index.html"><img src="assets-logo.png" alt="SNDF">SNDF <small>SECURITY SERVICES</small></a><button class="mobile-toggle">☰</button></header><div class="app-layout"><aside class="sidebar"><div class="side-label">SNDF OFFICER</div><button data-view="home">⌂ Home</button><button data-view="attendance">▤ My Attendance</button><button data-view="daily">◷ Daily Attendance</button><button data-view="team-attendance">👥 Team Attendance</button><button data-view="account">◉ My Account</button><button data-view="team-management">👤 Supervisor Management</button><button data-view="fine">⚠ Fine Records</button><button data-view="notice">⚑ Notice</button><button data-view="help">? Help</button><button data-view="point-transfer">📍 Point Transfer</button><button data-view="tasks">✓ Task Management</button><button data-view="profile">♙ Profile</button><button id="logout" class="exit">⇥ Logout</button></aside><main class="dash-main"><div id="status" class="status"></div>
-<section id="home" class="view"><div class="dash-hero"><div><span class="eyebrow">SNDF • STAFF PORTAL</span><h1>Welcome, <span id="welcomeName">Officer</span> 👋</h1><p class="welcome-id-line">ID: <b id="welcomeId">OFF-ID</b> • <span id="welcomeRole">Officer</span></p><p>Manage your permitted attendance, account, fines, notices, help and profile.</p></div><div class="hero-profile"><img id="welcomeDp" src="assets-logo.png" alt="Profile"><div><strong id="welcomeProfileName">Officer</strong><small id="welcomeProfileId">OFF-ID</small><span id="welcomeProfileRole">Officer</span></div></div></div><div class="panel live-attendance-panel"><h3>📍 Live Attendance</h3>
-<div class="camera-grid compact-camera"><video id="camera" autoplay playsinline muted></video><img id="captured" alt="Captured attendance photo"></div>
-<div class="attendance-actions"><button type="button" id="capturePhoto" class="action primary-action">📷 Take Photo</button><button type="button" id="retakePhoto" class="action">↻ Retake</button></div>
-<div class="auto-attendance-info">
-<div><small>Name</small><b id="autoName">—</b></div><div><small>Staff ID</small><b id="autoStaffId">—</b></div>
-<div><small>Role</small><b id="autoRole">—</b></div><div><small>Location Code</small><b id="autoLocationCode">—</b></div>
-<div><small>Parent ID</small><b id="autoParentId">—</b></div><div><small>GPS</small><b id="gpsStatus">Getting location…</b></div>
-<div><small>Shift</small><b id="autoShift">—</b></div><div><small>Location Duty Hours</small><b id="autoDutyHours">—</b></div>
-</div>
-<div class="attendance-actions main-attendance-actions"><button type="button" id="checkIn" class="action success">✓ Check In</button><button type="button" id="checkOut" class="action">✓ Check Out</button></div>
-<small class="muted-note">Information, Location Code, Parent ID and Shift automatically fill from your profile/device. User only takes photo and presses Check In / Check Out.</small></div></section>
-
-
-<section id="attendance" class="view hidden"><h2>Attendance</h2><div class="panel"><p>Download separate attendance sheets:</p><button class="action" onclick="downloadAttendance('admin')">Admin Sheet</button> <button class="action" onclick="downloadAttendance('field_officer')">Field Officer Sheet</button> <button class="action" onclick="downloadAttendance('supervisor')">Supervisor Sheet</button> <button class="action" onclick="downloadAttendance('guard')">Guard Sheet</button></div><div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Role</th><th>Staff ID</th><th>Name</th><th>Shift</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th><th>Action</th></tr></thead><tbody id="attendanceRows"></tbody></table></div></section>
-<section id="team-attendance" class="view hidden"><h2>Guards Attendance</h2>
-<div class="panel"><div class="download-toolbar"><label>Month<input id="teamAttendanceMonth" type="month"></label><label>Date<input id="teamAttendanceDate" type="date"></label></div>
-<p class="muted-note">Officer ko apne Field Officer ke under assigned Supervisors aur unke Guards ki attendance dikhेगी. Daily attendance aur selected month ki attendance dono yahan show hongi.</p></div>
-<div class="panel table-wrap"><h3>Daily Team Attendance</h3><table><thead><tr><th>Photo</th><th>Guard</th><th>ID</th><th>Location</th><th>Shift</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr></thead><tbody id="teamDailyRows"></tbody></table></div>
-<div class="panel table-wrap"><h3>Monthly Team Attendance</h3><table><thead><tr><th>Guard</th><th>ID</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th><th>19</th><th>20</th><th>21</th><th>22</th><th>23</th><th>24</th><th>25</th><th>26</th><th>27</th><th>28</th><th>29</th><th>30</th><th>31</th><th>P Count</th></tr></thead><tbody id="teamMonthlyRows"></tbody></table></div></section><section id="point-update" class="view hidden" style="display:none"><h2>Hourly Point Update</h2><div class="panel"><p class="muted-note"><b>Night Shift is compulsory:</b> हर 1 घंटे में live photo + live location submit करें. Day Shift में यह mandatory नहीं है.</p><div class="point-update-grid"><video id="pointCamera" autoplay playsinline muted></video><img id="pointCaptured" alt="Point update photo preview"></div><canvas id="pointCanvas" hidden></canvas><p>Live Location: <b id="pointLiveLocation">Getting GPS…</b></p><p id="pointStatus" class="point-ok">Checking Point Update status…</p><div class="attendance-actions"><button type="button" class="action primary-action" onclick="capturePointPhoto()">📷 Capture Photo</button><button type="button" class="action success" onclick="submitPointUpdate()">✓ Submit Point Update</button><button type="button" class="action" id="enablePointNotifications">🔔 Enable Phone Notifications</button></div></div></section><div id="pointAlarmModal" class="point-alarm-modal" role="alertdialog" aria-modal="true" aria-labelledby="pointAlarmTitle">
-  <div class="point-alarm-card">
-    <div class="point-alarm-icon">🚨</div>
-    <h2 id="pointAlarmTitle">POINT UPDATE MISSED / DUE</h2>
-    <p id="pointAlarmMessage">Night Shift: आपका 1 घंटे का Point Update अभी pending है। Live photo + live location submit करें।</p>
-    <div class="point-alarm-actions">
-      <button type="button" class="action danger" onclick="stopPointAlarm();document.getElementById('point-update')?.classList.remove('hidden');document.getElementById('point-update')?.scrollIntoView({behavior:'smooth'})">📷 Update Now</button>
-      <button type="button" class="action" onclick="playPointAlarmBeep()">🔔 Test Alarm</button>
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width,initial-scale=1" name="viewport"/>
+  <title>
+   SNDF Officer Dashboard
+  </title>
+  <link href="style.css" rel="stylesheet"/>
+ </head>
+ <body data-role="officer">
+  <header class="appbar">
+   <a class="brand" href="index.html">
+    <img alt="SNDF" src="assets-logo.png"/>
+    SNDF
+    <small>
+     SECURITY SERVICES
+    </small>
+   </a>
+   <button class="mobile-toggle">
+    ☰
+   </button>
+  </header>
+  <div class="app-layout">
+   <aside class="sidebar">
+    <div class="side-label">
+     SNDF OFFICER
     </div>
+    <button data-view="home">
+     ⌂ Home
+    </button>
+    <button data-view="attendance">
+     ▤ My Attendance
+    </button>
+    <button data-view="daily">
+     ◷ Daily Attendance
+    </button>
+    <button data-view="team-attendance">
+     👥 Team Attendance
+    </button>
+    <button data-view="account">
+     ◉ My Account
+    </button>
+    <button data-view="team-management">
+     👤 Supervisor Management
+    </button>
+    <button data-view="fine">
+     ⚠ Fine Records
+    </button>
+    <button data-view="notice">
+     ⚑ Notice
+    </button>
+    <button data-view="help">
+     ? Help
+    </button>
+    <button data-view="point-transfer">
+     📍 Point Transfer
+    </button>
+    <button data-view="tasks">
+     ✓ Task Management
+    </button>
+    <button data-view="profile">
+     ♙ Profile
+    </button>
+    <button class="exit" id="logout">
+     ⇥ Logout
+    </button>
+   </aside>
+   <main class="dash-main">
+    <div class="status" id="status">
+    </div>
+    <section class="view" id="home">
+     <div class="dash-hero">
+      <div>
+       <span class="eyebrow">
+        SNDF • STAFF PORTAL
+       </span>
+       <h1>
+        Welcome,
+        <span id="welcomeName">
+         Officer
+        </span>
+        👋
+       </h1>
+       <p class="welcome-id-line">
+        ID:
+        <b id="welcomeId">
+         OFF-ID
+        </b>
+        •
+        <span id="welcomeRole">
+         Officer
+        </span>
+       </p>
+       <p>
+        Manage your permitted attendance, account, fines, notices, help and profile.
+       </p>
+      </div>
+      <div class="hero-profile">
+       <img alt="Profile" id="welcomeDp" src="assets-logo.png"/>
+       <div>
+        <strong id="welcomeProfileName">
+         Officer
+        </strong>
+        <small id="welcomeProfileId">
+         OFF-ID
+        </small>
+        <span id="welcomeProfileRole">
+         Officer
+        </span>
+       </div>
+      </div>
+     </div>
+     <div class="panel live-attendance-panel">
+      <h3>
+       📍 Live Attendance
+      </h3>
+      <div class="camera-grid compact-camera">
+       <video autoplay="" id="camera" muted="" playsinline="">
+       </video>
+       <img alt="Captured attendance photo" id="captured"/>
+      </div>
+      <div class="attendance-actions">
+       <button class="action primary-action" id="capturePhoto" type="button">
+        📷 Take Photo
+       </button>
+       <button class="action" id="retakePhoto" type="button">
+        ↻ Retake
+       </button>
+      </div>
+      <div class="auto-attendance-info">
+       <div>
+        <small>
+         Name
+        </small>
+        <b id="autoName">
+         —
+        </b>
+       </div>
+       <div>
+        <small>
+         Staff ID
+        </small>
+        <b id="autoStaffId">
+         —
+        </b>
+       </div>
+       <div>
+        <small>
+         Role
+        </small>
+        <b id="autoRole">
+         —
+        </b>
+       </div>
+       <div>
+        <small>
+         Location Code
+        </small>
+        <b id="autoLocationCode">
+         —
+        </b>
+       </div>
+       <div>
+        <small>
+         Parent ID
+        </small>
+        <b id="autoParentId">
+         —
+        </b>
+       </div>
+       <div>
+        <small>
+         GPS
+        </small>
+        <b id="gpsStatus">
+         Getting location…
+        </b>
+       </div>
+       <div>
+        <small>
+         Shift
+        </small>
+        <b id="autoShift">
+         —
+        </b>
+       </div>
+       <div>
+        <small>
+         Location Duty Hours
+        </small>
+        <b id="autoDutyHours">
+         —
+        </b>
+       </div>
+      </div>
+      <div class="attendance-actions main-attendance-actions">
+       <button class="action success" id="checkIn" type="button">
+        ✓ Check In
+       </button>
+       <button class="action" id="checkOut" type="button">
+        ✓ Check Out
+       </button>
+      </div>
+      <small class="muted-note">
+       Information, Location Code, Parent ID and Shift automatically fill from your profile/device. User only takes photo and presses Check In / Check Out.
+      </small>
+     </div>
+    </section>
+    <section class="view hidden" id="attendance">
+     <h2>
+      Attendance
+     </h2>
+     <div class="panel">
+      <p>
+       Download separate attendance sheets:
+      </p>
+      <button class="action" onclick="downloadAttendance('admin')">
+       Admin Sheet
+      </button>
+      <button class="action" onclick="downloadAttendance('field_officer')">
+       Field Officer Sheet
+      </button>
+      <button class="action" onclick="downloadAttendance('supervisor')">
+       Supervisor Sheet
+      </button>
+      <button class="action" onclick="downloadAttendance('guard')">
+       Guard Sheet
+      </button>
+     </div>
+     <div class="panel table-wrap">
+      <table>
+       <thead>
+        <tr>
+         <th>
+          ID
+         </th>
+         <th>
+          Date
+         </th>
+         <th>
+          Role
+         </th>
+         <th>
+          Staff ID
+         </th>
+         <th>
+          Name
+         </th>
+         <th>
+          Shift
+         </th>
+         <th>
+          In
+         </th>
+         <th>
+          Out
+         </th>
+         <th>
+          Hours
+         </th>
+         <th>
+          Status
+         </th>
+         <th>
+          Action
+         </th>
+        </tr>
+       </thead>
+       <tbody id="attendanceRows">
+       </tbody>
+      </table>
+     </div>
+    </section>
+    <section class="view hidden" id="team-attendance">
+     <h2>
+      Guards Attendance
+     </h2>
+     <div class="panel">
+      <div class="download-toolbar">
+       <label>
+        Month
+        <input id="teamAttendanceMonth" type="month"/>
+       </label>
+       <label>
+        Date
+        <input id="teamAttendanceDate" type="date"/>
+       </label>
+      </div>
+      <p class="muted-note">
+       Officer ko apne Field Officer ke under assigned Supervisors aur unke Guards ki attendance dikhेगी. Daily attendance aur selected month ki attendance dono yahan show hongi.
+      </p>
+     </div>
+     <div class="panel table-wrap">
+      <h3>
+       Daily Team Attendance
+      </h3>
+      <table>
+       <thead>
+        <tr>
+         <th>
+          Photo
+         </th>
+         <th>
+          Guard
+         </th>
+         <th>
+          ID
+         </th>
+         <th>
+          Location
+         </th>
+         <th>
+          Shift
+         </th>
+         <th>
+          In
+         </th>
+         <th>
+          Out
+         </th>
+         <th>
+          Hours
+         </th>
+         <th>
+          Status
+         </th>
+        </tr>
+       </thead>
+       <tbody id="teamDailyRows">
+       </tbody>
+      </table>
+     </div>
+     <div class="panel table-wrap">
+      <h3>
+       Monthly Team Attendance
+      </h3>
+      <table>
+       <thead>
+        <tr>
+         <th>
+          Guard
+         </th>
+         <th>
+          ID
+         </th>
+         <th>
+          1
+         </th>
+         <th>
+          2
+         </th>
+         <th>
+          3
+         </th>
+         <th>
+          4
+         </th>
+         <th>
+          5
+         </th>
+         <th>
+          6
+         </th>
+         <th>
+          7
+         </th>
+         <th>
+          8
+         </th>
+         <th>
+          9
+         </th>
+         <th>
+          10
+         </th>
+         <th>
+          11
+         </th>
+         <th>
+          12
+         </th>
+         <th>
+          13
+         </th>
+         <th>
+          14
+         </th>
+         <th>
+          15
+         </th>
+         <th>
+          16
+         </th>
+         <th>
+          17
+         </th>
+         <th>
+          18
+         </th>
+         <th>
+          19
+         </th>
+         <th>
+          20
+         </th>
+         <th>
+          21
+         </th>
+         <th>
+          22
+         </th>
+         <th>
+          23
+         </th>
+         <th>
+          24
+         </th>
+         <th>
+          25
+         </th>
+         <th>
+          26
+         </th>
+         <th>
+          27
+         </th>
+         <th>
+          28
+         </th>
+         <th>
+          29
+         </th>
+         <th>
+          30
+         </th>
+         <th>
+          31
+         </th>
+         <th>
+          P Count
+         </th>
+        </tr>
+       </thead>
+       <tbody id="teamMonthlyRows">
+       </tbody>
+      </table>
+     </div>
+    </section>
+    <section class="view hidden" id="point-update" style="display:none">
+     <h2>
+      Hourly Point Update
+     </h2>
+     <div class="panel">
+      <p class="muted-note">
+       <b>
+        Night Shift is compulsory:
+       </b>
+       हर 1 घंटे में live photo + live location submit करें. Day Shift में यह mandatory नहीं है.
+      </p>
+      <div class="point-update-grid">
+       <video autoplay="" id="pointCamera" muted="" playsinline="">
+       </video>
+       <img alt="Point update photo preview" id="pointCaptured"/>
+      </div>
+      <canvas hidden="" id="pointCanvas">
+      </canvas>
+      <p>
+       Live Location:
+       <b id="pointLiveLocation">
+        Getting GPS…
+       </b>
+      </p>
+      <p class="point-ok" id="pointStatus">
+       Checking Point Update status…
+      </p>
+      <div class="attendance-actions">
+       <button class="action primary-action" onclick="capturePointPhoto()" type="button">
+        📷 Capture Photo
+       </button>
+       <button class="action success" onclick="submitPointUpdate()" type="button">
+        ✓ Submit Point Update
+       </button>
+       <button class="action" id="enablePointNotifications" type="button">
+        🔔 Enable Phone Notifications
+       </button>
+      </div>
+     </div>
+    </section>
+    <div aria-labelledby="pointAlarmTitle" aria-modal="true" class="point-alarm-modal" id="pointAlarmModal" role="alertdialog">
+     <div class="point-alarm-card">
+      <div class="point-alarm-icon">
+       🚨
+      </div>
+      <h2 id="pointAlarmTitle">
+       POINT UPDATE MISSED / DUE
+      </h2>
+      <p id="pointAlarmMessage">
+       Night Shift: आपका 1 घंटे का Point Update अभी pending है। Live photo + live location submit करें।
+      </p>
+      <div class="point-alarm-actions">
+       <button class="action danger" onclick="stopPointAlarm();document.getElementById('point-update')?.classList.remove('hidden');document.getElementById('point-update')?.scrollIntoView({behavior:'smooth'})" type="button">
+        📷 Update Now
+       </button>
+       <button class="action" onclick="playPointAlarmBeep()" type="button">
+        🔔 Test Alarm
+       </button>
+      </div>
+     </div>
+    </div>
+    <section class="view hidden" id="team-management">
+     <h2>
+      Supervisor Management
+     </h2>
+     <div class="panel">
+      <h3>
+       Create Supervisor
+      </h3>
+      <p class="muted-note">
+       Chain: Field Officer → Officer → Supervisor → Guard. An Officer can create Supervisors under their own ID.
+      </p>
+      <form class="grid-form" data-type="staff">
+       <input name="role" type="hidden" value="supervisor"/>
+       <input name="name" placeholder="Supervisor Full Name" required=""/>
+       <input name="staff_id" placeholder="Supervisor Staff ID" required=""/>
+       <input name="password" placeholder="Password" required="" type="password"/>
+       <input name="post" placeholder="Post" value="Supervisor"/>
+       <input min="0" name="salary" placeholder="Salary" type="number"/>
+       <input name="department" placeholder="Department"/>
+       <input id="createSupervisorLocation" name="location_code" placeholder="Location Code" required="" value=""/>
+       <input id="createSupervisorParent" name="parent_id" type="hidden" value=""/>
+       <input name="contact_number" placeholder="Contact Number"/>
+       <button class="action primary-action">
+        Create Supervisor
+       </button>
+      </form>
+     </div>
+     <div class="panel table-wrap">
+      <h3>
+       My Supervisors
+      </h3>
+      <table>
+       <thead>
+        <tr>
+         <th>
+          Name
+         </th>
+         <th>
+          ID
+         </th>
+         <th>
+          Location
+         </th>
+         <th>
+          Status
+         </th>
+        </tr>
+       </thead>
+       <tbody id="mySupervisorRows">
+       </tbody>
+      </table>
+     </div>
+    </section>
+    <section class="view hidden" id="daily">
+     <h2>
+      Daily Attendance
+     </h2>
+     <div class="panel table-wrap">
+      <table>
+       <thead>
+        <tr>
+         <th>
+          Photo
+         </th>
+         <th>
+          Role
+         </th>
+         <th>
+          ID
+         </th>
+         <th>
+          Name
+         </th>
+         <th>
+          Shift
+         </th>
+         <th>
+          In
+         </th>
+         <th>
+          Out
+         </th>
+         <th>
+          Hours
+         </th>
+         <th>
+          Status
+         </th>
+        </tr>
+       </thead>
+       <tbody id="dailyRows">
+       </tbody>
+      </table>
+     </div>
+    </section>
+    <section class="view hidden" id="fine">
+     <h2>
+      Fine Section
+     </h2>
+     <div class="panel fine-form">
+      <form class="grid-form" data-type="fine">
+       <select id="fineTarget" name="target_id" required="">
+       </select>
+       <input name="reason" placeholder="Fine reason" required=""/>
+       <input min="1" name="amount" placeholder="Fine amount" required="" type="number"/>
+       <button class="action danger">
+        Apply Fine
+       </button>
+      </form>
+      <p>
+       Admin and Field Officer can issue fines to Guard or Supervisor. Supervisor and Guard cannot issue fines.
+      </p>
+     </div>
+     <div class="panel table-wrap">
+      <table>
+       <thead>
+        <tr>
+         <th>
+          Target ID
+         </th>
+         <th>
+          Reason
+         </th>
+         <th>
+          Amount
+         </th>
+         <th>
+          Issued By
+         </th>
+         <th>
+          Date
+         </th>
+        </tr>
+       </thead>
+       <tbody id="fineRows">
+       </tbody>
+      </table>
+     </div>
+    </section>
+    <section class="view hidden" id="account">
+     <h2>
+      Account Section
+     </h2>
+     <div class="account-grid" id="accountBox">
+     </div>
+     <div class="panel">
+      <button class="action primary-action" id="accountDone">
+       Done
+      </button>
+     </div>
+    </section>
+    <section class="view hidden" id="staff">
+     <h2>
+      Staff Management
+     </h2>
+     <div class="panel">
+      <form class="grid-form" data-type="staff">
+       <select name="role">
+        <option value="field_officer">
+         Field Officer
+        </option>
+        <option value="supervisor">
+         Supervisor
+        </option>
+        <option value="guard">
+         Guard
+        </option>
+        <option value="admin">
+         Admin
+        </option>
+       </select>
+       <input name="name" placeholder="Full Name" required=""/>
+       <input name="staff_id" placeholder="Staff ID" required=""/>
+       <input name="password" placeholder="Password" required="" type="password"/>
+       <input name="post" placeholder="Post"/>
+       <input min="0" name="salary" placeholder="Salary" type="number"/>
+       <input name="dob" type="date"/>
+       <input name="department" placeholder="Department"/>
+       <input name="location_code" placeholder="Location Code"/>
+       <input name="parent_id" placeholder="Parent Staff ID"/>
+       <input name="contact_number" placeholder="Contact Number"/>
+       <button class="action primary-action">
+        Create Member
+       </button>
+      </form>
+     </div>
+     <div class="panel table-wrap">
+      <table>
+       <thead>
+        <tr>
+         <th>
+          Role
+         </th>
+         <th>
+          Name
+         </th>
+         <th>
+          ID
+         </th>
+         <th>
+          Post
+         </th>
+         <th>
+          Department
+         </th>
+         <th>
+          Salary
+         </th>
+         <th>
+          Status
+         </th>
+         <th>
+          Action
+         </th>
+        </tr>
+       </thead>
+       <tbody id="staffRows">
+       </tbody>
+      </table>
+     </div>
+    </section>
+    <section class="view hidden" id="advance">
+     <h2>
+      Advance Payment
+     </h2>
+     <div class="panel">
+      <form class="grid-form" data-type="advance">
+       <input name="staff_id" placeholder="Staff ID" required=""/>
+       <input min="1" name="amount" placeholder="Advance Amount" required="" type="number"/>
+       <input name="note" placeholder="Note"/>
+       <button class="action">
+        Add Advance
+       </button>
+      </form>
+     </div>
+    </section>
+    <section class="view hidden" id="suspend">
+     <h2>
+      ID Suspension
+     </h2>
+     <div class="panel">
+      <form class="grid-form" id="suspendForm">
+       <select id="suspendStaff" required="">
+        <option value="">
+         Select member
+        </option>
+       </select>
+       <input id="suspendHours" max="720" min="1" required="" type="number" value="12"/>
+       <input id="suspendReason" placeholder="Reason" required=""/>
+       <button class="action danger">
+        Suspend ID
+       </button>
+      </form>
+     </div>
+    </section>
+    <section class="view hidden" id="notice">
+     <h2>
+      Notice Section
+     </h2>
+     <div class="panel">
+      <form class="grid-form" data-type="notice">
+       <select name="to_role">
+        <option value="admin">
+         Admin
+        </option>
+        <option value="field_officer">
+         Field Officer
+        </option>
+        <option value="supervisor">
+         Supervisor
+        </option>
+        <option value="guard">
+         Guard
+        </option>
+        <option value="all">
+         All Staff
+        </option>
+       </select>
+       <textarea name="message" placeholder="Write notice" required=""></textarea>
+       <button class="action">
+        Send Notice
+       </button>
+      </form>
+     </div>
+     <div id="noticeRows">
+     </div>
+    </section>
+    <section class="view hidden" id="point-transfer">
+     <h2>
+      Point Transfer
+     </h2>
+     <div class="panel">
+      <p>
+       Current Point:
+       <b id="currentPoint">
+        —
+       </b>
+      </p>
+      <form class="grid-form" id="pointTransferForm">
+       <label>
+        New Point
+        <select id="transferPoint" name="to_location" required="">
+         <option value="">
+          Select Point
+         </option>
+        </select>
+       </label>
+       <textarea name="reason" placeholder="Reason for point transfer" required=""></textarea>
+       <button class="action primary-action">
+        Request Point Transfer
+       </button>
+      </form>
+      <p class="muted-note">
+       Request Admin ko jayegi. Admin approve karne ke baad aapka Location Code / Point change hoga.
+      </p>
+     </div>
+     <div id="myTransferRows">
+     </div>
+    </section>
+    <section class="view hidden" id="help">
+     <h2>
+      Help Section
+     </h2>
+     <div class="panel">
+      <form class="grid-form" data-type="help">
+       <textarea name="message" placeholder="Write help request" required=""></textarea>
+       <button class="action">
+        Send Help Request
+       </button>
+      </form>
+     </div>
+     <div id="helpRows">
+     </div>
+    </section>
+    <section class="view hidden" id="tasks">
+     <h2>
+      Task Management
+     </h2>
+     <div class="panel task-create-panel">
+      <h3>
+       Create / Assign Task
+      </h3>
+      <p class="muted-note">
+       Task hierarchy: Master Admin → Admin/Field Officer/Officer/Supervisor/Guard; Admin → Field Officer/Officer/Supervisor/Guard; Field Officer → Officer; Officer → Supervisor; Supervisor → Guard.
+      </p>
+      <form class="grid-form task-create-form" id="taskCreateForm">
+       <label>
+        Assign To
+        <select id="taskAssignee" name="assigned_to" required="">
+         <option value="">
+          Loading members…
+         </option>
+        </select>
+       </label>
+       <label>
+        Task Title
+        <input name="title" placeholder="Task title" required=""/>
+       </label>
+       <label>
+        Priority
+        <select name="priority">
+         <option>
+          Low
+         </option>
+         <option selected="">
+          Normal
+         </option>
+         <option>
+          High
+         </option>
+         <option>
+          Urgent
+         </option>
+        </select>
+       </label>
+       <label>
+        Due Date &amp; Time
+        <input name="due_at" type="datetime-local"/>
+       </label>
+       <label>
+        Task Description
+        <textarea name="description" placeholder="Task details / instructions" required=""></textarea>
+       </label>
+       <button class="action primary-action">
+        ✓ Assign Task
+       </button>
+      </form>
+     </div>
+     <div class="panel table-wrap">
+      <h3>
+       Tasks &amp; Live Status
+      </h3>
+      <table>
+       <thead>
+        <tr>
+         <th>
+          ID
+         </th>
+         <th>
+          Task
+         </th>
+         <th>
+          Assigned To
+         </th>
+         <th>
+          Created By
+         </th>
+         <th>
+          Priority
+         </th>
+         <th>
+          Due
+         </th>
+         <th>
+          Status
+         </th>
+         <th>
+          Last Update
+         </th>
+         <th>
+          Action
+         </th>
+        </tr>
+       </thead>
+       <tbody id="taskRows">
+       </tbody>
+      </table>
+     </div>
+     <div class="panel task-report-panel hidden" id="taskReportPanel">
+      <h3>
+       Complete Task &amp; Submit Report
+      </h3>
+      <form class="grid-form" id="taskReportForm">
+       <input id="reportTaskId" type="hidden"/>
+       <label>
+        Report Summary
+        <textarea id="reportSummary" placeholder="What was done?" required=""></textarea>
+       </label>
+       <label>
+        Time Summary
+        <input id="reportTimeSummary" placeholder="e.g. 10:00 AM–1:30 PM (3.5 hours)" required=""/>
+       </label>
+       <label>
+        Result / Outcome
+        <textarea id="reportResult" placeholder="Final result / outcome" required=""></textarea>
+       </label>
+       <label>
+        Issues / Observations
+        <textarea id="reportIssues" placeholder="Any issue, delay or observation"></textarea>
+       </label>
+       <label>
+        Next Action
+        <textarea id="reportNextAction" placeholder="Follow-up / next step"></textarea>
+       </label>
+       <div>
+        <button class="action success" type="submit">
+         ✓ Submit Report &amp; Complete Task
+        </button>
+        <button class="action" id="cancelTaskReport" type="button">
+         Cancel
+        </button>
+       </div>
+      </form>
+     </div>
+    </section>
+    <section class="view hidden" id="profile">
+     <h2>
+      Complete Edit Profile
+     </h2>
+     <div class="panel">
+      <p class="muted-note">
+       Apni complete profile fill karke
+       <b>
+        Submit Profile
+       </b>
+       karein. Submit hone ke baad details Admin Panel → All Profile Records mein show hongi.
+      </p>
+      <form class="grid-form profile-complete-form" id="profileForm">
+       <label>
+        Full Name
+        <input id="p_name" name="name" required=""/>
+       </label>
+       <label>
+        Staff ID
+        <input disabled="" id="p_staff_id" value=""/>
+       </label>
+       <label>
+        Date of Birth
+        <input id="p_dob" name="dob" type="date"/>
+       </label>
+       <label>
+        Age
+        <input id="p_age" max="80" min="16" name="age" placeholder="Years" type="number"/>
+       </label>
+       <label>
+        Height (cm)
+        <input id="p_height" max="250" min="100" name="height" step="0.1" type="number"/>
+       </label>
+       <label>
+        Weight (kg)
+        <input id="p_weight" max="250" min="30" name="weight" step="0.1" type="number"/>
+       </label>
+       <label>
+        Blood Group
+        <select id="p_blood_group" name="blood_group">
+         <option value="">
+          Select
+         </option>
+         <option>
+          A+
+         </option>
+         <option>
+          A-
+         </option>
+         <option>
+          B+
+         </option>
+         <option>
+          B-
+         </option>
+         <option>
+          AB+
+         </option>
+         <option>
+          AB-
+         </option>
+         <option>
+          O+
+         </option>
+         <option>
+          O-
+         </option>
+        </select>
+       </label>
+       <label>
+        Qualification
+        <input id="p_qualification" name="qualification" placeholder="e.g. 12th / Graduate"/>
+       </label>
+       <label>
+        Physical Level
+        <select id="p_physical_level" name="physical_level">
+         <option value="">
+          Select
+         </option>
+         <option>
+          Low
+         </option>
+         <option>
+          Medium
+         </option>
+         <option>
+          High
+         </option>
+        </select>
+       </label>
+       <label>
+        Medical Level
+        <select id="p_medical_level" name="medical_level">
+         <option value="">
+          Select
+         </option>
+         <option>
+          Low
+         </option>
+         <option>
+          Medium
+         </option>
+         <option>
+          High
+         </option>
+        </select>
+       </label>
+       <label>
+        Skills
+        <textarea id="p_skills" name="skills" placeholder="Security, crowd control, communication..."></textarea>
+       </label>
+       <label>
+        Police Verification
+        <select id="p_police_verification" name="police_verification">
+         <option value="">
+          Select
+         </option>
+         <option>
+          Yes
+         </option>
+         <option>
+          No
+         </option>
+        </select>
+       </label>
+       <label>
+        Driving License
+        <select id="p_driving_license" name="driving_license">
+         <option value="">
+          Select
+         </option>
+         <option>
+          Yes
+         </option>
+         <option>
+          No
+         </option>
+        </select>
+       </label>
+       <label>
+        Training Details
+        <textarea id="p_training_details" name="training_details" placeholder="Training name, duration, certificate/details"></textarea>
+       </label>
+       <label>
+        Work Experience
+        <textarea id="p_work_experience" name="work_experience" placeholder="Company/post/duration and experience details"></textarea>
+       </label>
+       <label>
+        Contact Number
+        <input id="p_contact_number" name="contact_number" placeholder="Contact Number"/>
+       </label>
+       <div class="profile-photo-grid">
+        <div class="photo-upload-card">
+         <b>
+          Photo 1 — Front Full
+         </b>
+         <input accept="image/*" id="p_photo_front_file" type="file"/>
+         <input id="p_photo_front" name="photo_front" type="hidden"/>
+         <img alt="Front photo" class="profile-photo-preview" id="p_photo_front_preview" src="assets-logo.png"/>
+        </div>
+        <div class="photo-upload-card">
+         <b>
+          Photo 2 — Back Full
+         </b>
+         <input accept="image/*" id="p_photo_back_file" type="file"/>
+         <input id="p_photo_back" name="photo_back" type="hidden"/>
+         <img alt="Back photo" class="profile-photo-preview" id="p_photo_back_preview" src="assets-logo.png"/>
+        </div>
+        <div class="photo-upload-card">
+         <b>
+          Photo 3 — Left Full
+         </b>
+         <input accept="image/*" id="p_photo_left_file" type="file"/>
+         <input id="p_photo_left" name="photo_left" type="hidden"/>
+         <img alt="Left photo" class="profile-photo-preview" id="p_photo_left_preview" src="assets-logo.png"/>
+        </div>
+        <div class="photo-upload-card">
+         <b>
+          Photo 4 — Right Full
+         </b>
+         <input accept="image/*" id="p_photo_right_file" type="file"/>
+         <input id="p_photo_right" name="photo_right" type="hidden"/>
+         <img alt="Right photo" class="profile-photo-preview" id="p_photo_right_preview" src="assets-logo.png"/>
+        </div>
+       </div>
+       <input id="p_dp" name="dp" type="hidden"/>
+       <input id="p_post" name="post" type="hidden"/>
+       <input id="p_salary" name="salary" type="hidden"/>
+       <input id="p_department" name="department" type="hidden"/>
+       <input id="p_location_code" name="location_code" type="hidden"/>
+       <button class="action primary-action" type="submit">
+        ✓ Submit Profile
+       </button>
+      </form>
+     </div>
+    </section>
+   </main>
   </div>
-</div>
-<section id="team-management" class="view hidden"><h2>Supervisor Management</h2><div class="panel"><h3>Create Supervisor</h3><p class="muted-note">Chain: Field Officer → Officer → Supervisor → Guard. An Officer can create Supervisors under their own ID.</p><form data-type="staff" class="grid-form"><input type="hidden" name="role" value="supervisor"><input name="name" placeholder="Supervisor Full Name" required><input name="staff_id" placeholder="Supervisor Staff ID" required><input name="password" type="password" placeholder="Password" required><input name="post" value="Supervisor" placeholder="Post"><input name="salary" type="number" min="0" placeholder="Salary"><input name="department" placeholder="Department"><input id="createSupervisorLocation" name="location_code" value="" placeholder="Location Code" required><input type="hidden" id="createSupervisorParent" name="parent_id" value=""><input name="contact_number" placeholder="Contact Number"><button class="action primary-action">Create Supervisor</button></form></div><div class="panel table-wrap"><h3>My Supervisors</h3><table><thead><tr><th>Name</th><th>ID</th><th>Location</th><th>Status</th></tr></thead><tbody id="mySupervisorRows"></tbody></table></div></section><section id="daily" class="view hidden"><h2>Daily Attendance</h2><div class="panel table-wrap"><table><thead><tr><th>Photo</th><th>Role</th><th>ID</th><th>Name</th><th>Shift</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr></thead><tbody id="dailyRows"></tbody></table></div></section>
-<section id="fine" class="view hidden"><h2>Fine Section</h2><div class="panel fine-form"><form data-type="fine" class="grid-form"><select id="fineTarget" name="target_id" required></select><input name="reason" placeholder="Fine reason" required><input name="amount" type="number" min="1" placeholder="Fine amount" required><button class="action danger">Apply Fine</button></form><p>Admin and Field Officer can issue fines to Guard or Supervisor. Supervisor and Guard cannot issue fines.</p></div><div class="panel table-wrap"><table><thead><tr><th>Target ID</th><th>Reason</th><th>Amount</th><th>Issued By</th><th>Date</th></tr></thead><tbody id="fineRows"></tbody></table></div></section>
-<section id="account" class="view hidden"><h2>Account Section</h2><div id="accountBox" class="account-grid"></div><div class="panel"><button id="accountDone" class="action primary-action">Done</button></div></section>
-<section id="staff" class="view hidden"><h2>Staff Management</h2><div class="panel"><form data-type="staff" class="grid-form"><select name="role"><option value="field_officer">Field Officer</option><option value="supervisor">Supervisor</option><option value="guard">Guard</option><option value="admin">Admin</option></select><input name="name" placeholder="Full Name" required><input name="staff_id" placeholder="Staff ID" required><input name="password" type="password" placeholder="Password" required><input name="post" placeholder="Post"><input name="salary" type="number" min="0" placeholder="Salary"><input name="dob" type="date"><input name="department" placeholder="Department"><input name="location_code" placeholder="Location Code"><input name="parent_id" placeholder="Parent Staff ID"><input name="contact_number" placeholder="Contact Number"><button class="action primary-action">Create Member</button></form></div><div class="panel table-wrap"><table><thead><tr><th>Role</th><th>Name</th><th>ID</th><th>Post</th><th>Department</th><th>Salary</th><th>Status</th><th>Action</th></tr></thead><tbody id="staffRows"></tbody></table></div></section>
-<section id="advance" class="view hidden"><h2>Advance Payment</h2><div class="panel"><form data-type="advance" class="grid-form"><input name="staff_id" placeholder="Staff ID" required><input name="amount" type="number" min="1" placeholder="Advance Amount" required><input name="note" placeholder="Note"><button class="action">Add Advance</button></form></div></section>
-<section id="suspend" class="view hidden"><h2>ID Suspension</h2><div class="panel"><form id="suspendForm" class="grid-form"><select id="suspendStaff" required><option value="">Select member</option></select><input id="suspendHours" type="number" min="1" max="720" value="12" required><input id="suspendReason" placeholder="Reason" required><button class="action danger">Suspend ID</button></form></div></section>
-<section id="notice" class="view hidden"><h2>Notice Section</h2><div class="panel"><form data-type="notice" class="grid-form"><select name="to_role"><option value="admin">Admin</option><option value="field_officer">Field Officer</option><option value="supervisor">Supervisor</option><option value="guard">Guard</option><option value="all">All Staff</option></select><textarea name="message" placeholder="Write notice" required></textarea><button class="action">Send Notice</button></form></div><div id="noticeRows"></div></section>
-<section id="point-transfer" class="view hidden"><h2>Point Transfer</h2><div class="panel"><p>Current Point: <b id="currentPoint">—</b></p><form id="pointTransferForm" class="grid-form"><label>New Point<select id="transferPoint" name="to_location" required><option value="">Select Point</option></select></label><textarea name="reason" placeholder="Reason for point transfer" required></textarea><button class="action primary-action">Request Point Transfer</button></form><p class="muted-note">Request Admin ko jayegi. Admin approve karne ke baad aapka Location Code / Point change hoga.</p></div><div id="myTransferRows"></div></section>
-<section id="help" class="view hidden"><h2>Help Section</h2><div class="panel"><form data-type="help" class="grid-form"><textarea name="message" placeholder="Write help request" required></textarea><button class="action">Send Help Request</button></form></div><div id="helpRows"></div></section>
-<section id="tasks" class="view hidden"><h2>Task Management</h2>
-<div class="panel task-create-panel">
-<h3>Create / Assign Task</h3>
-<p class="muted-note">Task hierarchy: Master Admin → Admin/Field Officer/Officer/Supervisor/Guard; Admin → Field Officer/Officer/Supervisor/Guard; Field Officer → Officer; Officer → Supervisor; Supervisor → Guard.</p>
-<form id="taskCreateForm" class="grid-form task-create-form">
-<label>Assign To<select id="taskAssignee" name="assigned_to" required><option value="">Loading members…</option></select></label>
-<label>Task Title<input name="title" required placeholder="Task title"></label>
-<label>Priority<select name="priority"><option>Low</option><option selected>Normal</option><option>High</option><option>Urgent</option></select></label>
-<label>Due Date & Time<input name="due_at" type="datetime-local"></label>
-<label>Task Description<textarea name="description" placeholder="Task details / instructions" required></textarea></label>
-<button class="action primary-action">✓ Assign Task</button>
-</form></div>
-<div class="panel table-wrap"><h3>Tasks & Live Status</h3><table><thead><tr><th>ID</th><th>Task</th><th>Assigned To</th><th>Created By</th><th>Priority</th><th>Due</th><th>Status</th><th>Last Update</th><th>Action</th></tr></thead><tbody id="taskRows"></tbody></table></div>
-<div class="panel task-report-panel hidden" id="taskReportPanel"><h3>Complete Task & Submit Report</h3>
-<form id="taskReportForm" class="grid-form">
-<input id="reportTaskId" type="hidden">
-<label>Report Summary<textarea id="reportSummary" required placeholder="What was done?"></textarea></label>
-<label>Time Summary<input id="reportTimeSummary" required placeholder="e.g. 10:00 AM–1:30 PM (3.5 hours)"></label>
-<label>Result / Outcome<textarea id="reportResult" required placeholder="Final result / outcome"></textarea></label>
-<label>Issues / Observations<textarea id="reportIssues" placeholder="Any issue, delay or observation"></textarea></label>
-<label>Next Action<textarea id="reportNextAction" placeholder="Follow-up / next step"></textarea></label>
-<div><button type="submit" class="action success">✓ Submit Report & Complete Task</button><button type="button" class="action" id="cancelTaskReport">Cancel</button></div>
-</form></div>
-</section><section id="profile" class="view hidden"><h2>Complete Edit Profile</h2>
-<div class="panel"><p class="muted-note">Apni complete profile fill karke <b>Submit Profile</b> karein. Submit hone ke baad details Admin Panel → All Profile Records mein show hongi.</p>
-<form id="profileForm" class="grid-form profile-complete-form">
-<label>Full Name<input id="p_name" name="name" required></label>
-<label>Staff ID<input id="p_staff_id" value="" disabled></label>
-<label>Date of Birth<input id="p_dob" name="dob" type="date"></label>
-<label>Age<input id="p_age" name="age" type="number" min="16" max="80" placeholder="Years"></label>
-<label>Height (cm)<input id="p_height" name="height" type="number" min="100" max="250" step="0.1"></label>
-<label>Weight (kg)<input id="p_weight" name="weight" type="number" min="30" max="250" step="0.1"></label>
-<label>Blood Group<select id="p_blood_group" name="blood_group"><option value="">Select</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></label>
-<label>Qualification<input id="p_qualification" name="qualification" placeholder="e.g. 12th / Graduate"></label>
-<label>Physical Level<select id="p_physical_level" name="physical_level"><option value="">Select</option><option>Low</option><option>Medium</option><option>High</option></select></label>
-<label>Medical Level<select id="p_medical_level" name="medical_level"><option value="">Select</option><option>Low</option><option>Medium</option><option>High</option></select></label>
-<label>Skills<textarea id="p_skills" name="skills" placeholder="Security, crowd control, communication..."></textarea></label>
-<label>Police Verification<select id="p_police_verification" name="police_verification"><option value="">Select</option><option>Yes</option><option>No</option></select></label>
-<label>Driving License<select id="p_driving_license" name="driving_license"><option value="">Select</option><option>Yes</option><option>No</option></select></label>
-<label>Training Details<textarea id="p_training_details" name="training_details" placeholder="Training name, duration, certificate/details"></textarea></label>
-<label>Work Experience<textarea id="p_work_experience" name="work_experience" placeholder="Company/post/duration and experience details"></textarea></label>
-<label>Contact Number<input id="p_contact_number" name="contact_number" placeholder="Contact Number"></label>
-<div class="profile-photo-grid">
-<div class="photo-upload-card"><b>Photo 1 — Front Full</b><input id="p_photo_front_file" type="file" accept="image/*"><input id="p_photo_front" name="photo_front" type="hidden"><img id="p_photo_front_preview" class="profile-photo-preview" src="assets-logo.png" alt="Front photo"></div>
-<div class="photo-upload-card"><b>Photo 2 — Back Full</b><input id="p_photo_back_file" type="file" accept="image/*"><input id="p_photo_back" name="photo_back" type="hidden"><img id="p_photo_back_preview" class="profile-photo-preview" src="assets-logo.png" alt="Back photo"></div>
-<div class="photo-upload-card"><b>Photo 3 — Left Full</b><input id="p_photo_left_file" type="file" accept="image/*"><input id="p_photo_left" name="photo_left" type="hidden"><img id="p_photo_left_preview" class="profile-photo-preview" src="assets-logo.png" alt="Left photo"></div>
-<div class="photo-upload-card"><b>Photo 4 — Right Full</b><input id="p_photo_right_file" type="file" accept="image/*"><input id="p_photo_right" name="photo_right" type="hidden"><img id="p_photo_right_preview" class="profile-photo-preview" src="assets-logo.png" alt="Right photo"></div>
-</div>
-<input id="p_dp" name="dp" type="hidden">
-<input id="p_post" name="post" type="hidden"><input id="p_salary" name="salary" type="hidden"><input id="p_department" name="department" type="hidden"><input id="p_location_code" name="location_code" type="hidden">
-<button class="action primary-action" type="submit">✓ Submit Profile</button>
-</form></div></section>
-</main></div><script src="app.js"></script></body></html>
+  <script src="app.js">
+  </script>
+ </body>
+</html>
