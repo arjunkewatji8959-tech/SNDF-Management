@@ -2,40 +2,290 @@
      SNDF MANAGEMENT | PAGE SECTIONS
      File-level guide: keep each feature inside its marked section.
      ===================================================== -->
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Edit Profile • SNDF</title><link rel="stylesheet" href="style.css"></head>
-<body data-role="admin"><header class="appbar"><a class="brand" href="admin.html"><img src="assets-logo.png" alt="SNDF">SNDF <small>SECURITY SERVICES</small></a><a class="action" href="admin.html">← Back</a></header>
-<main class="dash-main edit-profile-page"><div id="status" class="status"></div><div class="panel"><span class="eyebrow">ADMIN CONTROL</span><h1>Edit Profile</h1><p class="muted-note">Admin can review and update the complete staff profile, 4 full-photo records, location, parent ID, reliever status and password.</p>
-<form id="editProfileForm" class="grid-form">
-<label>Photo<input id="ep_dp_file" type="file" accept="image/*"><input id="ep_dp" name="dp" type="hidden"></label>
-<label>Name<input id="ep_name" name="name" required></label>
-<label>Staff ID<input id="ep_staff_id" name="staff_id" readonly></label>
-<label>Role<select id="ep_role" name="role" required><option value="field_officer">Field Officer</option><option value="supervisor">Supervisor</option><option value="guard">Guard</option></select></label>
-<label>Location Code<select id="ep_location_code" name="location_code"><option value="">No Location</option></select></label>
-<label>Parent ID<select id="ep_parent_id" name="parent_id"><option value="">No Parent</option></select></label>
-<label>Post<input id="ep_post" name="post"></label>
-<label>Salary<input id="ep_salary" name="salary" type="number" min="0"></label>
-<label>DOB<input id="ep_dob" name="dob" type="date"></label>
-<label>Department<input id="ep_department" name="department"></label>
-<label>Contact Number<input id="ep_contact_number" name="contact_number"></label><label>Age<input id="ep_age" name="age" type="number" min="16" max="80"></label>
-<label>Height (cm)<input id="ep_height" name="height" type="number" step="0.1"></label>
-<label>Weight (kg)<input id="ep_weight" name="weight" type="number" step="0.1"></label>
-<label>Blood Group<select id="ep_blood_group" name="blood_group"><option value="">Select</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></label>
-<label>Qualification<input id="ep_qualification" name="qualification"></label>
-<label>Physical Level<select id="ep_physical_level" name="physical_level"><option value="">Select</option><option>Low</option><option>Medium</option><option>High</option></select></label>
-<label>Medical Level<select id="ep_medical_level" name="medical_level"><option value="">Select</option><option>Low</option><option>Medium</option><option>High</option></select></label>
-<label>Skills<textarea id="ep_skills" name="skills"></textarea></label>
-<label>Police Verification<select id="ep_police_verification" name="police_verification"><option value="">Select</option><option>Yes</option><option>No</option></select></label>
-<label>Driving License<select id="ep_driving_license" name="driving_license"><option value="">Select</option><option>Yes</option><option>No</option></select></label>
-<label>Training Details<textarea id="ep_training_details" name="training_details"></textarea></label>
-<label>Work Experience<textarea id="ep_work_experience" name="work_experience"></textarea></label>
-<div class="profile-photo-grid">
-<div class="photo-upload-card"><b>Photo 1 — Front Full</b><input id="ep_photo_front_file" type="file" accept="image/*"><input id="ep_photo_front" name="photo_front" type="hidden"><img id="ep_photo_front_preview" class="profile-photo-preview" src="assets-logo.png"></div>
-<div class="photo-upload-card"><b>Photo 2 — Back Full</b><input id="ep_photo_back_file" type="file" accept="image/*"><input id="ep_photo_back" name="photo_back" type="hidden"><img id="ep_photo_back_preview" class="profile-photo-preview" src="assets-logo.png"></div>
-<div class="photo-upload-card"><b>Photo 3 — Left Full</b><input id="ep_photo_left_file" type="file" accept="image/*"><input id="ep_photo_left" name="photo_left" type="hidden"><img id="ep_photo_left_preview" class="profile-photo-preview" src="assets-logo.png"></div>
-<div class="photo-upload-card"><b>Photo 4 — Right Full</b><input id="ep_photo_right_file" type="file" accept="image/*"><input id="ep_photo_right" name="photo_right" type="hidden"><img id="ep_photo_right_preview" class="profile-photo-preview" src="assets-logo.png"></div>
-</div>
-<label>Reliever<select id="ep_is_reliever" name="is_reliever"><option value="0">No</option><option value="1">Yes</option></select></label>
-<label>New Password<input id="ep_password" name="password" type="password" minlength="6" placeholder="Leave blank to keep current"></label>
-<button class="action primary-action" type="submit">Save Profile</button>
-</form></div></main>
-<script src="edit-profile.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>
+      Edit Profile • SNDF
+    </title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body data-role="admin">
+    <header class="appbar">
+      <a class="brand" href="admin.html">
+        <img src="assets-logo.png" alt="SNDF">
+        SNDF
+        <small>
+          SECURITY SERVICES
+        </small>
+      </a>
+      <a class="action" href="admin.html">
+        ← Back
+      </a>
+    </header>
+    <!-- END SECTION: HEADER -->
+    <main class="dash-main edit-profile-page">
+      <div id="status" class="status">
+      </div>
+      <div class="panel">
+        <span class="eyebrow">
+          ADMIN CONTROL
+        </span>
+        <h1>
+          Edit Profile
+        </h1>
+        <p class="muted-note">
+          Admin can review and update the complete staff profile, 4 full-photo records, location, parent ID, reliever status and password.
+        </p>
+        <form id="editProfileForm" class="grid-form">
+          <label>
+            Photo
+            <input id="ep_dp_file" type="file" accept="image/*">
+            <input id="ep_dp" name="dp" type="hidden">
+          </label>
+          <label>
+            Name
+            <input id="ep_name" name="name" required>
+          </label>
+          <label>
+            Staff ID
+            <input id="ep_staff_id" name="staff_id" readonly>
+          </label>
+          <label>
+            Role
+            <select id="ep_role" name="role" required>
+              <option value="field_officer">
+                Field Officer
+              </option>
+              <option value="supervisor">
+                Supervisor
+              </option>
+              <option value="guard">
+                Guard
+              </option>
+            </select>
+          </label>
+          <label>
+            Location Code
+            <select id="ep_location_code" name="location_code">
+              <option value="">
+                No Location
+              </option>
+            </select>
+          </label>
+          <label>
+            Parent ID
+            <select id="ep_parent_id" name="parent_id">
+              <option value="">
+                No Parent
+              </option>
+            </select>
+          </label>
+          <label>
+            Post
+            <input id="ep_post" name="post">
+          </label>
+          <label>
+            Salary
+            <input id="ep_salary" name="salary" type="number" min="0">
+          </label>
+          <label>
+            DOB
+            <input id="ep_dob" name="dob" type="date">
+          </label>
+          <label>
+            Department
+            <input id="ep_department" name="department">
+          </label>
+          <label>
+            Contact Number
+            <input id="ep_contact_number" name="contact_number">
+          </label>
+          <label>
+            Age
+            <input id="ep_age" name="age" type="number" min="16" max="80">
+          </label>
+          <label>
+            Height (cm)
+            <input id="ep_height" name="height" type="number" step="0.1">
+          </label>
+          <label>
+            Weight (kg)
+            <input id="ep_weight" name="weight" type="number" step="0.1">
+          </label>
+          <label>
+            Blood Group
+            <select id="ep_blood_group" name="blood_group">
+              <option value="">
+                Select
+              </option>
+              <option>
+                A+
+              </option>
+              <option>
+                A-
+              </option>
+              <option>
+                B+
+              </option>
+              <option>
+                B-
+              </option>
+              <option>
+                AB+
+              </option>
+              <option>
+                AB-
+              </option>
+              <option>
+                O+
+              </option>
+              <option>
+                O-
+              </option>
+            </select>
+          </label>
+          <label>
+            Qualification
+            <input id="ep_qualification" name="qualification">
+          </label>
+          <label>
+            Physical Level
+            <select id="ep_physical_level" name="physical_level">
+              <option value="">
+                Select
+              </option>
+              <option>
+                Low
+              </option>
+              <option>
+                Medium
+              </option>
+              <option>
+                High
+              </option>
+            </select>
+          </label>
+          <label>
+            Medical Level
+            <select id="ep_medical_level" name="medical_level">
+              <option value="">
+                Select
+              </option>
+              <option>
+                Low
+              </option>
+              <option>
+                Medium
+              </option>
+              <option>
+                High
+              </option>
+            </select>
+          </label>
+          <label>
+            Skills
+            <textarea id="ep_skills" name="skills">
+            </textarea>
+          </label>
+          <label>
+            Police Verification
+            <select id="ep_police_verification" name="police_verification">
+              <option value="">
+                Select
+              </option>
+              <option>
+                Yes
+              </option>
+              <option>
+                No
+              </option>
+            </select>
+          </label>
+          <label>
+            Driving License
+            <select id="ep_driving_license" name="driving_license">
+              <option value="">
+                Select
+              </option>
+              <option>
+                Yes
+              </option>
+              <option>
+                No
+              </option>
+            </select>
+          </label>
+          <label>
+            Training Details
+            <textarea id="ep_training_details" name="training_details">
+            </textarea>
+          </label>
+          <label>
+            Work Experience
+            <textarea id="ep_work_experience" name="work_experience">
+            </textarea>
+          </label>
+          <div class="profile-photo-grid">
+            <div class="photo-upload-card">
+              <b>
+                Photo 1 — Front Full
+              </b>
+              <input id="ep_photo_front_file" type="file" accept="image/*">
+              <input id="ep_photo_front" name="photo_front" type="hidden">
+              <img id="ep_photo_front_preview" class="profile-photo-preview" src="assets-logo.png">
+            </div>
+            <div class="photo-upload-card">
+              <b>
+                Photo 2 — Back Full
+              </b>
+              <input id="ep_photo_back_file" type="file" accept="image/*">
+              <input id="ep_photo_back" name="photo_back" type="hidden">
+              <img id="ep_photo_back_preview" class="profile-photo-preview" src="assets-logo.png">
+            </div>
+            <div class="photo-upload-card">
+              <b>
+                Photo 3 — Left Full
+              </b>
+              <input id="ep_photo_left_file" type="file" accept="image/*">
+              <input id="ep_photo_left" name="photo_left" type="hidden">
+              <img id="ep_photo_left_preview" class="profile-photo-preview" src="assets-logo.png">
+            </div>
+            <div class="photo-upload-card">
+              <b>
+                Photo 4 — Right Full
+              </b>
+              <input id="ep_photo_right_file" type="file" accept="image/*">
+              <input id="ep_photo_right" name="photo_right" type="hidden">
+              <img id="ep_photo_right_preview" class="profile-photo-preview" src="assets-logo.png">
+            </div>
+          </div>
+          <label>
+            Reliever
+            <select id="ep_is_reliever" name="is_reliever">
+              <option value="0">
+                No
+              </option>
+              <option value="1">
+                Yes
+              </option>
+            </select>
+          </label>
+          <label>
+            New Password
+            <input id="ep_password" name="password" type="password" minlength="6" placeholder="Leave blank to keep current">
+          </label>
+          <button class="action primary-action" type="submit">
+            Save Profile
+          </button>
+        </form>
+        <!-- END SECTION: FORM -->
+      </div>
+    </main>
+    <!-- END SECTION: MAIN -->
+    <script src="edit-profile.js">
+    </script>
+  </body>
+</html>

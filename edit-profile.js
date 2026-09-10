@@ -7,8 +7,16 @@ const user=JSON.parse(sessionStorage.getItem('sndfUser')||'null');
 if(!user||!['admin','master_admin'].includes(user.role)) location.replace('login.html?role=admin');
 const $=s=>document.querySelector(s);
 const qs=new URLSearchParams(location.search), targetId=qs.get('id');
-function api(path,opt={}){return fetch(API_URL+path,{headers:{'Content-Type':'application/json','x-staff-id':user.staff_id,'x-role':user.role,...(opt.headers||{})},...opt}).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{}if(!r.ok)throw Error(d.error||'Request failed');return d;});}
+// =====================================================
+// SECTION: FUNCTION api
+// =====================================================
+function api(path,opt={}
+// END SECTION: FUNCTION api
+){return fetch(API_URL+path,{headers:{'Content-Type':'application/json','x-staff-id':user.staff_id,'x-role':user.role,...(opt.headers||{})},...opt}).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{}if(!r.ok)throw Error(d.error||'Request failed');return d;});}
 let staff=[], current=null, locations=[];
+// =====================================================
+// SECTION: FUNCTION load
+// =====================================================
 async function load(){
  if(!targetId){alert('Profile ID missing');return location.href='admin.html';}
  [staff,locations]=await Promise.all([api('/staff'),api('/locations')]);
@@ -21,6 +29,11 @@ async function load(){
  ['front','back','left','right'].forEach(k=>{const v=current['photo_'+k]||'assets-logo.png';const img=$('#ep_photo_'+k+'_preview');if(img)img.src=v;});
  populateParents();
 }
+// END SECTION: FUNCTION load
+
+// =====================================================
+// SECTION: FUNCTION populateParents
+// =====================================================
 function populateParents(){
  const role=$('#ep_role').value, loc=$('#ep_location_code').value, sel=$('#ep_parent_id');
  let parents=[];
@@ -29,6 +42,8 @@ function populateParents(){
  sel.innerHTML='<option value="">No Parent</option>'+parents.map(p=>`<option value="${esc(p.staff_id)}">${esc(p.name)} — ${esc(p.staff_id)}${p.location_code?' • '+esc(p.location_code):''}</option>`).join('');
  sel.value=current.parent_id||'';
 }
+// END SECTION: FUNCTION populateParents
+
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 $('#ep_role').addEventListener('change',populateParents); $('#ep_location_code').addEventListener('change',populateParents);
 $('#ep_dp_file').addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>$('#ep_dp').value=r.result;r.readAsDataURL(f);});

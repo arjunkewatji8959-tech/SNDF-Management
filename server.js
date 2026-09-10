@@ -38,9 +38,28 @@ app.get('/api/deployment', (req,res)=>res.json({
   database: path.basename(dbPath)
 }));
 
+// =====================================================
+
+// SECTION: FUNCTION all
+
+// =====================================================
+
 function all(sql, params, res){ db.all(sql, params || [], (err, rows)=> err ? res.status(500).json({error:err.message}) : res.json(rows)); }
+
+// END SECTION: FUNCTION all
+
+// =====================================================
+// SECTION: FUNCTION run
+// =====================================================
 function run(sql, params, res, success){ db.run(sql, params || [], function(err){ if(err) return res.status(500).json({error:err.message}); success(this); }); }
+// END SECTION: FUNCTION run
+
+// =====================================================
+// SECTION: FUNCTION get
+// =====================================================
 function get(sql, params, cb){ db.get(sql, params || [], cb); }
+// END SECTION: FUNCTION get
+
 
 const columns = {
   staff: [
@@ -171,6 +190,9 @@ db.serialize(()=>{
 // subscriptions survive server restarts. For stricter production secret management,
 // WEB_PUSH_PUBLIC_KEY / WEB_PUSH_PRIVATE_KEY may be supplied as environment variables.
 // =====================================================
+// =====================================================
+// SECTION: FUNCTION loadWebPushKeys
+// =====================================================
 function loadWebPushKeys(){
   let publicKey=process.env.WEB_PUSH_PUBLIC_KEY, privateKey=process.env.WEB_PUSH_PRIVATE_KEY;
   const keyFile=path.join(dataDir,'web-push-vapid.json');
@@ -191,6 +213,8 @@ function loadWebPushKeys(){
   webpush.setVapidDetails(subject,publicKey,privateKey);
   return publicKey;
 }
+// END SECTION: FUNCTION loadWebPushKeys
+
 let WEB_PUSH_PUBLIC_KEY='';
 try{WEB_PUSH_PUBLIC_KEY=loadWebPushKeys(); console.log('Web Push notifications ready.');}
 catch(e){console.error('Web Push setup failed:',e.message);}
@@ -220,7 +244,16 @@ app.delete('/api/push/subscribe',auth,(req,res)=>{
   else db.run('DELETE FROM push_subscriptions WHERE staff_id=?',[req.user.staff_id],()=>res.json({ok:true}));
 });
 
-function sendPushToStaff(staffId,payload,done=()=>{}){
+// =====================================================
+
+// SECTION: FUNCTION sendPushToStaff
+
+// =====================================================
+
+function sendPushToStaff(staffId,payload,done=()=>{}
+
+// END SECTION: FUNCTION sendPushToStaff
+){
   db.all('SELECT * FROM push_subscriptions WHERE staff_id=?',[staffId],(e,subs)=>{
     if(e)return done(e); if(!subs.length)return done(null,0);
     let remaining=subs.length, sent=0;
@@ -235,6 +268,12 @@ function sendPushToStaff(staffId,payload,done=()=>{}){
     });
   });
 }
+
+// =====================================================
+
+// SECTION: FUNCTION scanPointPushDue
+
+// =====================================================
 
 function scanPointPushDue(){
   db.all(`SELECT staff_id FROM staff WHERE role IN ('guard','supervisor') AND status='active'`,[],(e,rows)=>{
@@ -261,17 +300,33 @@ function scanPointPushDue(){
   });
 }
 
+// END SECTION: FUNCTION scanPointPushDue
+
+
 // Authentication for protected APIs. Frontend sends x-staff-id + x-role after login.
+// =====================================================
+// SECTION: FUNCTION audit
+// =====================================================
 function audit(actor, action, targetId, details=''){
   db.run(`INSERT INTO audit_logs(actor_id,actor_role,action,target_id,details,created_at) VALUES(?,?,?,?,?,?)`,
     [actor?.staff_id||'',actor?.role||'',action,String(targetId||''),String(details||''),new Date().toISOString()],
     ()=>{});
 }
+// END SECTION: FUNCTION audit
+
+// =====================================================
+// SECTION: FUNCTION distanceMeters
+// =====================================================
 function distanceMeters(lat1,lng1,lat2,lng2){
   const R=6371000, rad=Math.PI/180, dLat=(lat2-lat1)*rad, dLng=(lng2-lng1)*rad;
   const a=Math.sin(dLat/2)**2+Math.cos(lat1*rad)*Math.cos(lat2*rad)*Math.sin(dLng/2)**2;
   return 2*R*Math.asin(Math.sqrt(a));
 }
+// END SECTION: FUNCTION distanceMeters
+
+// =====================================================
+// SECTION: FUNCTION checkGeofence
+// =====================================================
 function checkGeofence(locationCode, locationText, cb){
   const code=String(locationCode||'').trim();
   if(!code)return cb(null,{configured:false,allowed:true});
@@ -286,6 +341,14 @@ function checkGeofence(locationCode, locationText, cb){
     cb(null,{configured:true,allowed:distance<=radius,distance,radius});
   });
 }
+// END SECTION: FUNCTION checkGeofence
+
+
+// =====================================================
+
+// SECTION: FUNCTION auth
+
+// =====================================================
 
 function auth(req,res,next){
   const staffId=req.get('x-staff-id');
@@ -298,7 +361,15 @@ function auth(req,res,next){
     req.user=user; next();
   });
 }
+
+// END SECTION: FUNCTION auth
+
+// =====================================================
+// SECTION: FUNCTION roles
+// =====================================================
 function roles(...allowed){ return (req,res,next)=>allowed.includes(req.user.role) ? next() : res.status(403).json({error:`Only ${allowed.join(' or ')} can perform this action`}); }
+// END SECTION: FUNCTION roles
+
 
 app.get('/api/health',(req,res)=>res.json({status:'healthy',service:'SNDF backend',time:new Date().toISOString()}));
 
@@ -410,6 +481,9 @@ app.put('/api/staff/:id/profile',auth,roles('admin','master_admin'),(req,res)=>{
     save();
     };
     validateEditLocation(continueEdit);
+    // =====================================================
+    // SECTION: FUNCTION save
+    // =====================================================
     function save(){
       const vals=[x.name||s.name,newRole,x.post||s.post,x.salary??s.salary,x.dob||'',x.department||'',location,parent,x.contact_number||'',x.dp||s.dp||'',
         x.age||null,x.height||null,x.weight||null,x.blood_group||'',x.qualification||'',x.physical_level||'',x.medical_level||'',x.skills||'',x.police_verification||'',x.driving_license||'',x.training_details||'',x.work_experience||'',
@@ -432,6 +506,8 @@ app.put('/api/staff/:id/profile',auth,roles('admin','master_admin'),(req,res)=>{
       } else finishUpdate('');
 
     }
+    // END SECTION: FUNCTION save
+
   });
 });
 
@@ -482,6 +558,9 @@ app.put('/api/profile/me',auth,(req,res)=>{
 // WhatsApp notification helper. For automatic sending, configure Meta WhatsApp Cloud API
 // with WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN. The business number shown to
 // users is WHATSAPP_SENDER_NUMBER (default: 8959872715).
+// =====================================================
+// SECTION: FUNCTION sendWhatsAppMessage
+// =====================================================
 async function sendWhatsAppMessage(to,text){
   const sender=process.env.WHATSAPP_SENDER_NUMBER || '8959872715';
   const phoneNumberId=process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -501,6 +580,8 @@ async function sendWhatsAppMessage(to,text){
     return {sent:true,whatsapp_url,sender};
   }catch(e){ return {sent:false,whatsapp_url,sender,error:e.message}; }
 }
+// END SECTION: FUNCTION sendWhatsAppMessage
+
 
 app.post('/api/relievers/assign',auth,roles('admin','master_admin'),async(req,res)=>{
   const staffId=String(req.body?.staff_id||'').trim(), location=String(req.body?.location_code||'').trim();
@@ -579,30 +660,13 @@ app.post('/api/reliever-checkin',auth,roles('admin','master_admin'),(req,res)=>{
 // TEAM ATTENDANCE - Supervisor sees only guards assigned to them; Field Officer sees assigned supervisors/guards.
 app.get('/api/team-attendance',auth,roles('field_officer','officer','supervisor'),(req,res)=>{
   const parent=req.user.staff_id;
-  let condition, params;
-  if(req.user.role==='supervisor'){
-    condition=`(s.parent_id=? OR s.reliever_parent_id=?) AND s.role='guard'`;
-    params=[parent,parent];
-  }else if(req.user.role==='officer'){
-    condition=`((s.role='supervisor' AND (s.parent_id=? OR s.reliever_parent_id=?))
-      OR (s.role='guard' AND (s.parent_id IN (SELECT staff_id FROM staff WHERE parent_id=?)
-      OR s.reliever_parent_id IN (SELECT staff_id FROM staff WHERE parent_id=?))))`;
-    params=[parent,parent,parent,parent];
-  }else{
-    // Field Officer sees the complete descendant chain: Officer -> Supervisor -> Guard.
-    condition=`s.staff_id IN (
-      WITH RECURSIVE descendants(staff_id) AS (
-        SELECT staff_id FROM staff WHERE parent_id=? OR reliever_parent_id=?
-        UNION
-        SELECT s2.staff_id FROM staff s2 JOIN descendants d
-          ON s2.parent_id=d.staff_id OR s2.reliever_parent_id=d.staff_id
-      ) SELECT staff_id FROM descendants
-    ) AND s.role IN ('officer','supervisor','guard')`;
-    params=[parent,parent];
-  }
-  all(`SELECT a.*,s.role,s.location_code AS staff_location_code,s.parent_id,s.reliever_parent_id
-       FROM attendance a JOIN staff s ON s.staff_id=a.staff_id
-       WHERE ${condition} ORDER BY a.date DESC,a.id DESC`,params,res);
+  const condition=req.user.role==='supervisor'
+    ? `(s.parent_id=? OR s.reliever_parent_id=?) AND s.role='guard'`
+    : req.user.role==='officer'
+      ? `((s.role='supervisor' AND (s.parent_id=? OR s.reliever_parent_id=?)) OR (s.role='guard' AND (s.parent_id IN (SELECT staff_id FROM staff WHERE parent_id=?) OR s.reliever_parent_id IN (SELECT staff_id FROM staff WHERE parent_id=?))))`
+      : `(s.parent_id=? OR s.reliever_parent_id=?) AND s.role IN ('officer','supervisor','guard')`;
+  all(`SELECT a.*,s.role,s.location_code AS staff_location_code,s.parent_id,s.reliever_parent_id FROM attendance a
+       JOIN staff s ON s.staff_id=a.staff_id WHERE ${condition} ORDER BY a.date DESC,a.id DESC`,req.user.role==='officer'?[parent,parent,parent,parent]:[parent,parent],res);
 });
 
 
@@ -621,7 +685,12 @@ const TASK_TARGETS = {
   supervisor:['guard'],
   guard:[]
 };
+// =====================================================
+// SECTION: FUNCTION canAssignTask
+// =====================================================
 function canAssignTask(from,to){ return (TASK_TARGETS[from]||[]).includes(to); }
+// END SECTION: FUNCTION canAssignTask
+
 app.get('/api/tasks',auth,(req,res)=>{
   const base=`SELECT t.*,s.name AS assignee_name,c.name AS creator_name
              FROM tasks t
@@ -645,6 +714,12 @@ app.post('/api/tasks',auth,(req,res)=>{
     if(!s)return res.status(404).json({error:`Assignee not found: ${assigned}`});
     createTaskForAssignee(s);
 
+    // =====================================================
+
+    // SECTION: FUNCTION createTaskForAssignee
+
+    // =====================================================
+
     function createTaskForAssignee(s){
     if(s.status==='suspended')return res.status(403).json({error:'Cannot assign a task to a suspended member'});
     if(!canAssignTask(req.user.role,s.role))return res.status(403).json({error:`${labelRole(req.user.role)} cannot assign tasks to ${labelRole(s.role)}`});
@@ -654,12 +729,25 @@ app.post('/api/tasks',auth,(req,res)=>{
       [String(x.title).trim(),String(x.description||'').trim(),priority,req.user.staff_id,req.user.role,s.staff_id,s.role,x.due_at||'',new Date().toISOString()],
       res,row=>{audit(req.user,'TASK_CREATED',s.staff_id,`${x.title}; priority=${priority}`);res.status(201).json({id:row.lastID,message:'Task created',assigned_to:s.staff_id,assigned_role:s.role});});
     }
+
+    // END SECTION: FUNCTION createTaskForAssignee
+
   });
 });
+// =====================================================
+// SECTION: FUNCTION labelRole
+// =====================================================
 function labelRole(r){return ({master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r)}
+// END SECTION: FUNCTION labelRole
+
+// =====================================================
+// SECTION: FUNCTION taskAccess
+// =====================================================
 function taskAccess(task,user){
   return task && (task.assigned_to===user.staff_id || task.created_by===user.staff_id);
 }
+// END SECTION: FUNCTION taskAccess
+
 app.put('/api/tasks/:id/start',auth,(req,res)=>{
   get('SELECT * FROM tasks WHERE id=?',[req.params.id],(e,t)=>{
     if(e)return res.status(500).json({error:e.message}); if(!t)return res.status(404).json({error:'Task not found'});
@@ -741,7 +829,15 @@ app.get('/api/suspension-notifications',auth,roles('admin','master_admin'),(req,
 // Guard + Supervisor must submit a live photo + GPS once every hour during Night Shift.
 // Day Shift is not mandatory. Admin/Master Admin can monitor all submitted points.
 // =====================================================
+// =====================================================
+// SECTION: FUNCTION pointShiftFromAttendance
+// =====================================================
 function pointShiftFromAttendance(row){ return row?.shift==='Night Shift' ? 'Night Shift' : (row?.shift||''); }
+// END SECTION: FUNCTION pointShiftFromAttendance
+
+// =====================================================
+// SECTION: FUNCTION pointStatusForStaff
+// =====================================================
 function pointStatusForStaff(staffId, cb){
   get(`SELECT a.*,s.role,s.name,s.location_code FROM attendance a JOIN staff s ON s.staff_id=a.staff_id
        WHERE a.staff_id=? AND a.check_out IS NULL ORDER BY a.id DESC LIMIT 1`,[staffId],(e,att)=>{
@@ -757,6 +853,8 @@ function pointStatusForStaff(staffId, cb){
     });
   });
 }
+// END SECTION: FUNCTION pointStatusForStaff
+
 app.get('/api/point-updates/status',auth,roles('guard','supervisor'),(req,res)=>pointStatusForStaff(req.user.staff_id,(e,data)=>e?res.status(500).json({error:e.message}):res.json(data)));
 app.post('/api/point-updates',auth,roles('guard','supervisor'),(req,res)=>{
   const x=req.body||{}; const photo=String(x.photo||'').trim(), location=String(x.location||'').trim();
@@ -803,19 +901,34 @@ app.get('/api/staff/:id/profile-view',auth,roles('admin','master_admin'),(req,re
 
 // PROFILE PDF DOWNLOAD - Admin/Master Admin only.
 // Generates a real PDF and embeds all four full-body photos stored as data URLs.
+// =====================================================
+// SECTION: FUNCTION profileImageBuffer
+// =====================================================
 function profileImageBuffer(value){
   const v=String(value||'');
   const m=v.match(/^data:image\/(?:jpeg|jpg|png|webp);base64,(.+)$/i);
   if(!m)return null;
   try{return Buffer.from(m[1],'base64');}catch{return null;}
 }
+// END SECTION: FUNCTION profileImageBuffer
+
+// =====================================================
+// SECTION: FUNCTION pdfSafe
+// =====================================================
 function pdfSafe(v){
   return String(v??'—').replace(/[^\x20-\x7E₹]/g,'?');
 }
+// END SECTION: FUNCTION pdfSafe
+
+// =====================================================
+// SECTION: FUNCTION addPdfField
+// =====================================================
 function addPdfField(doc,label,value,x,y,w=240){
   doc.font('Helvetica-Bold').fontSize(9).fillColor('#555').text(pdfSafe(label),x,y,{width:w});
   doc.font('Helvetica').fontSize(10).fillColor('#111').text(pdfSafe(value||'—'),x,y+12,{width:w});
 }
+// END SECTION: FUNCTION addPdfField
+
 app.get('/api/staff/:id/profile-pdf',auth,roles('admin','master_admin'),(req,res)=>{
   get(`SELECT id,role,name,staff_id,post,salary,location_code,parent_id,status,suspended_until,suspension_reason,dob,department,contact_number,dp,
       age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,driving_license,
@@ -895,8 +1008,18 @@ const SHIFT_SCHEDULES = {
   'Evening Shift': { start: '14:00', end: '22:00', targetHours: 8, dutyHours: 8 },
   'Night Shift 8H': { start: '22:00', end: '06:00', targetHours: 8, dutyHours: 8 }
 };
+// =====================================================
+// SECTION: FUNCTION shiftForDutyHours
+// =====================================================
 function shiftForDutyHours(hours){ return Number(hours)===8 ? ['Morning Shift','Evening Shift','Night Shift 8H'] : ['Day Shift','Night Shift']; }
+// END SECTION: FUNCTION shiftForDutyHours
+
+// =====================================================
+// SECTION: FUNCTION isShiftAllowedForDuty
+// =====================================================
 function isShiftAllowedForDuty(shift,hours){ return shiftForDutyHours(hours).includes(shift); }
+// END SECTION: FUNCTION isShiftAllowedForDuty
+
 app.get('/api/attendance',auth,(req,res)=>{
   // Admin gets the complete attendance record, including the staff Location Code
   // and the live photo captured at Check In. Other roles see only their own records.
@@ -1006,6 +1129,9 @@ app.get('/api/advances',auth,(req,res)=>{ const sql=['admin','master_admin'].inc
 app.post('/api/advances',auth,roles('admin','master_admin'),(req,res)=>{const x=req.body||{}; if(!x.staff_id||Number(x.amount)<=0)return res.status(400).json({error:'Staff ID and positive advance are required'}); run('INSERT INTO advances(staff_id,amount,note,given_by,created_at) VALUES(?,?,?,?,?)',[x.staff_id,Number(x.amount),x.note||'',req.user.staff_id,new Date().toISOString()],res,row=>{audit(req.user,'ADVANCE_ADDED',x.staff_id,`₹${x.amount}`);res.status(201).json({id:row.lastID,message:'Advance recorded'});});});
 
 // ACCOUNT + PAYROLL. Admin can view/pay all staff except Admin's own salary.
+// =====================================================
+// SECTION: FUNCTION accountForStaff
+// =====================================================
 function accountForStaff(staffId, cb){
   get('SELECT id,role,name,staff_id,post,salary,contact_number FROM staff WHERE staff_id=?',[staffId],(err,st)=>{
     if(err || !st) return cb(err || new Error('Staff not found'));
@@ -1025,6 +1151,8 @@ function accountForStaff(staffId, cb){
     });
   });
 }
+// END SECTION: FUNCTION accountForStaff
+
 
 app.get('/api/account/me',auth,(req,res)=>{
   accountForStaff(req.user.staff_id,(err,data)=>err?res.status(500).json({error:err.message}):res.json(data));
@@ -1226,9 +1354,18 @@ db.run(`CREATE TABLE IF NOT EXISTS locations (
 db.run("ALTER TABLE locations ADD COLUMN duty_shift TEXT NOT NULL DEFAULT '12_hour'",()=>{});
 db.run("ALTER TABLE locations ADD COLUMN duty_hours INTEGER NOT NULL DEFAULT 12",()=>{});
 
+// =====================================================
+
+// SECTION: FUNCTION adminOnly
+
+// =====================================================
+
 function adminOnly(req, res, next) {
   auth(req,res,()=>roles('admin','master_admin')(req,res,next));
 }
+
+// END SECTION: FUNCTION adminOnly
+
 
 app.get('/api/locations', auth, (req, res) => {
   db.all('SELECT * FROM locations ORDER BY code ASC', [], (err, rows) => {

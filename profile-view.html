@@ -1,1 +1,55 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SNDF Profile View</title><link rel="stylesheet" href="style.css"></head><body class="login-page"><header class="appbar"><a class="brand" href="admin.html"><img src="assets-logo.png" alt="SNDF">SNDF <small>PROFILE VIEW</small></a></header><main class="dash-main profile-view-page"><div id="profileViewStatus" class="status"></div><div class="panel"><div class="profile-view-head"><div><span class="eyebrow">SNDF MANAGEMENT</span><h1>Complete Staff Profile</h1><p class="muted-note">Read-only profile record. Admin/Master Admin can download the complete profile.</p></div><div class="profile-view-actions"><button id="downloadProfile" class="action primary-action">⬇ Download Profile</button><button class="action" onclick="location.href='admin.html'">← Back</button></div></div></div><div id="profileViewContent"></div></main><script src="profile-view.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>
+      SNDF Profile View
+    </title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body class="login-page">
+    <header class="appbar">
+      <a class="brand" href="admin.html">
+        <img src="assets-logo.png" alt="SNDF">
+        SNDF
+        <small>
+          PROFILE VIEW
+        </small>
+      </a>
+    </header>
+    <!-- END SECTION: HEADER -->
+    <main class="dash-main profile-view-page">
+      <div id="profileViewStatus" class="status">
+      </div>
+      <div class="panel">
+        <div class="profile-view-head">
+          <div>
+            <span class="eyebrow">
+              SNDF MANAGEMENT
+            </span>
+            <h1>
+              Complete Staff Profile
+            </h1>
+            <p class="muted-note">
+              Read-only profile record. Admin/Master Admin can download the complete profile.
+            </p>
+          </div>
+          <div class="profile-view-actions">
+            <button id="downloadProfile" class="action primary-action">
+              ⬇ Download Profile
+            </button>
+            <button class="action" onclick="location.href='admin.html'">
+              ← Back
+            </button>
+          </div>
+        </div>
+      </div>
+      <div id="profileViewContent">
+      </div>
+    </main>
+    <!-- END SECTION: MAIN -->
+    <script src="profile-view.js">
+    </script>
+  </body>
+</html>
