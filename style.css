@@ -777,3 +777,13 @@ input:focus,select:focus,textarea:focus{
   }
 }
 
+
+/* SNDF FINAL BLUE & WHITE PROFESSIONAL THEME */
+:root{--primary:#1769aa;--primary-dark:#0d4775;--primary-light:#eaf5ff;--bg:#f7fbff;--panel:#ffffff;--border:#d7e8f5;--text:#18324a;--muted:#6b8296;}
+body{background:var(--bg)!important;color:var(--text)!important;}
+button,.btn,.action-btn,input[type=submit],input[type=button]{background:#eaf5ff!important;color:#14598d!important;border:1px solid #b9d9ef!important;box-shadow:none!important;}
+button:hover,.btn:hover,.action-btn:hover,input[type=submit]:hover,input[type=button]:hover{background:#d8edfb!important;color:#0d4775!important;border-color:#8fc3e5!important;}
+.sidebar,.topbar,.app-header{background:#1769aa!important;}
+.card,.panel,.premium-panel,.premium-card,.table-wrap,.form-card{background:#fff!important;border-color:#d7e8f5!important;}
+.premium-overview h2,.premium-overview-head h2{font-family:Inter,Segoe UI,Arial,sans-serif!important;font-size:24px!important;font-weight:600!important;letter-spacing:-.2px!important;color:#163f60!important;}
+.nav button.active,.sidebar button.active{background:#eaf5ff!important;color:#14598d!important;}
