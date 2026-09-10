@@ -280,3 +280,20 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #1976d2
   .sidebar button{padding:10px 9px}
   .btn,.action,.payment-done,.download-btn,.location-management-btn{min-height:40px}
 }
+
+/* SNDF FINAL PHOTO VIEW + SOFT MOBILE */
+.attendance-photo-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.68);z-index:9998}
+#attendancePhotoModal{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;padding:18px}
+.attendance-photo-box{position:relative;max-width:min(92vw,700px);max-height:92vh;background:#fff;border-radius:16px;padding:14px;box-shadow:0 15px 45px rgba(0,0,0,.28)}
+.attendance-photo-img{display:block;max-width:100%;max-height:78vh;object-fit:contain;border-radius:10px}
+.attendance-photo-close{position:absolute;right:8px;top:8px;width:36px;height:36px;border:0;border-radius:50%;background:#eef5ff;color:#24415f;font-size:24px;cursor:pointer;z-index:2}
+.attendance-photo-title{font-weight:700;padding:4px 42px 10px 4px;color:#24415f}
+@media(max-width:700px){
+ .btn,.nav-btn,button{border-radius:10px}
+ .btn-primary,.primary{background:#dceeff;color:#214766;border-color:#bfdcf4}
+ .btn-success,.success{background:#e1f4e9;color:#245c3b;border-color:#c5e5d2}
+ .btn-danger,.danger{background:#fde4e4;color:#7a3030;border-color:#f2c4c4}
+ .btn-outline,.outline{background:#f4f8fc;color:#35536c;border-color:#d3e0ea}
+ .sidebar button,.sidebar a{background:#e9f4ff;color:#315a78;border-color:#d4e8f7}
+ .sidebar .active,.sidebar button.active{background:#d8ecff;color:#204c70}
+}

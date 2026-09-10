@@ -651,3 +651,32 @@ $('#downloadAuditReport')?.addEventListener('click',()=>downloadUrl('/audit-logs
 $('#downloadPayrollReport')?.addEventListener('click',()=>{const m=$('#reportMonth')?.value||new Date().toISOString().slice(0,7);downloadUrl('/reports/payroll/export?month='+encodeURIComponent(m),'sndf-payroll-'+m+'.csv')});
 
 $('#logout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser');location.replace('login.html')});
+
+// SNDF_ATTENDANCE_PHOTO_VIEW
+(function(){
+  function openAttendancePhoto(src, title){
+    if(!src) return;
+    let m=document.getElementById('attendancePhotoModal');
+    if(!m){
+      m=document.createElement('div');
+      m.id='attendancePhotoModal';
+      m.innerHTML='<div class="attendance-photo-backdrop"></div><div class="attendance-photo-box"><button class="attendance-photo-close" type="button">×</button><div class="attendance-photo-title"></div><img class="attendance-photo-img" alt="Attendance Photo"></div>';
+      document.body.appendChild(m);
+      m.querySelector('.attendance-photo-backdrop').onclick=()=>m.remove();
+      m.querySelector('.attendance-photo-close').onclick=()=>m.remove();
+    }
+    m.querySelector('.attendance-photo-title').textContent=title||'Attendance Photo';
+    m.querySelector('.attendance-photo-img').src=src;
+    m.style.display='flex';
+  }
+  document.addEventListener('click',function(e){
+    const el=e.target.closest('[data-attendance-photo],[data-photo]');
+    if(el){
+      const src=el.getAttribute('data-attendance-photo')||el.getAttribute('data-photo')||el.getAttribute('src');
+      if(src) openAttendancePhoto(src, el.getAttribute('data-photo-title')||'Attendance Photo');
+    } else if(e.target.tagName==='IMG' && e.target.closest('.attendance-row,.attendance-card,.attendance-list,.attendance-table,.attendance-record')){
+      openAttendancePhoto(e.target.currentSrc||e.target.src,'Attendance Photo');
+    }
+  });
+  window.openAttendancePhoto=openAttendancePhoto;
+})();
