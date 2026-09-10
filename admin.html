@@ -531,14 +531,17 @@
                 </select>
               </label>
               <label>
+                Duty Hours
+                <select id="relieverDutyHours" required>
+                  <option value="12">12 Hours</option>
+                  <option value="8">8 Hours</option>
+                </select>
+              </label>
+              <label>
                 Shift
-                <select id="relieverShift">
-                  <option>
-                    Day Shift
-                  </option>
-                  <option>
-                    Night Shift
-                  </option>
+                <select id="relieverShift" required>
+                  <option value="Day Shift">Day Shift — 08:00–20:00</option>
+                  <option value="Night Shift">Night Shift — 20:00–08:00</option>
                 </select>
               </label>
               <button type="button" class="action" id="markRelieverBtn">
@@ -577,6 +580,12 @@
                   </th>
                   <th>
                     Reliever
+                  </th>
+                  <th>
+                    Duty Hours
+                  </th>
+                  <th>
+                    Shift
                   </th>
                   <th>
                     Status
@@ -1420,8 +1429,25 @@
           </h2>
           <div class="panel">
             <p class="muted-note">
-              Supervisor / Field Officer ki point transfer requests yahan aayengi. Approve karne par unka Location Code automatically update hoga.
+              Pending point transfer requests yahan show hongi. Admin/Master Admin request approve/reject kar sakte hain, ya bina request ke Staff ID dal kar direct point change kar sakte hain.
             </p>
+            <form id="directPointTransferForm" class="grid-form" style="margin-bottom:18px">
+              <label>
+                Staff ID
+                <input name="staff_id" id="directTransferStaffId" placeholder="Enter Staff ID" required>
+              </label>
+              <label>
+                New Point / Location Code
+                <select name="to_location" id="directTransferPoint" required>
+                  <option value="">Select Point</option>
+                </select>
+              </label>
+              <label style="grid-column:1/-1">
+                Reason / Note
+                <input name="reason" placeholder="Optional reason for direct transfer">
+              </label>
+              <button class="action primary-action" type="submit">📍 Change Point Directly</button>
+            </form>
             <div class="panel table-wrap">
               <table>
                 <thead>
@@ -1579,6 +1605,9 @@
                 <select id="profileRoleFilter">
                   <option value="all">
                     All
+                  </option>
+                  <option value="master_admin">
+                    Master Admin
                   </option>
                   <option value="admin">
                     Admin

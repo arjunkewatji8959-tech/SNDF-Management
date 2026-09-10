@@ -99,7 +99,7 @@ async function loadPremiumDashboard(stats){
 async function refresh(){try{await loadLocationConfigs(); populateLocationSelects(); fillAutoAttendance(); const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;
 if(role==='field_officer'){const x=$('#createOfficerParent');if(x)x.value=user.staff_id;const l=$('#createOfficerLocation');if(l)l.value=user.location_code||'';const b=$('#myOfficerRows');if(b)b.innerHTML=staff.filter(x=>x.role==='officer'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Officers found.</td></tr>';}
 if(role==='officer'){const x=$('#createSupervisorParent');if(x)x.value=user.staff_id;const l=$('#createSupervisorLocation');if(l)l.value=user.location_code||'';const b=$('#mySupervisorRows');if(b)b.innerHTML=staff.filter(x=>x.role==='supervisor'&&x.parent_id===user.staff_id).map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.status||'active')}</td></tr>`).join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';}
-window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();}catch(e){console.log(e.message)}}
+window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();}catch(e){console.log(e.message)}}
 
 // END SECTION: FUNCTION refresh
 
@@ -124,6 +124,20 @@ async function loadPointTransfers(){
 }
 
 // END SECTION: FUNCTION loadPointTransfers
+
+// =====================================================
+// SECTION: FUNCTION loadDirectTransferPoints
+// =====================================================
+async function loadDirectTransferPoints(){
+  const sel=$('#directTransferPoint');
+  if(!sel || !isAdminRole)return;
+  try{
+    const rows=await api('/locations');
+    const codes=[...new Set(rows.filter(x=>x.active!==0).map(x=>String(x.code||'').trim()).filter(Boolean))];
+    sel.innerHTML='<option value="">Select Point</option>'+codes.map(c=>{const x=locationConfigs[c];return `<option value="${escape(c)}">${escape(c)}${x?.name?' — '+escape(x.name):''}</option>`}).join('');
+  }catch(e){sel.innerHTML='<option value="">Unable to load points</option>';}
+}
+// END SECTION: FUNCTION loadDirectTransferPoints
 
 // =====================================================
 // SECTION: FUNCTION loadTransferPoints
@@ -316,7 +330,7 @@ function fillTargets(list){const sel=$('#fineTarget');if(sel)sel.innerHTML='<opt
 function renderProfileRecords(list){
   const b=$('#profileRecordRows'); if(!b||!isAdminRole)return;
   const rf=$('#profileRoleFilter')?.value||'all', lf=$('#profileLocationFilter')?.value||'all';
-  const rows=list.filter(s=>['admin','field_officer','officer','supervisor','guard'].includes(s.role))
+  const rows=list.filter(s=>['master_admin','admin','field_officer','officer','supervisor','guard'].includes(s.role))
     .filter(s=>rf==='all'||s.role===rf).filter(s=>lf==='all'||String(s.location_code||'')===lf);
   b.innerHTML=rows.map(s=>`<tr>
     <td><img class="profile-thumb" src="${escape(s.dp||s.photo_front||'assets-logo.png')}" alt="Profile"></td>
@@ -330,7 +344,7 @@ function renderProfileRecords(list){
       Training: ${escape(s.training_details||'—')}<br>Experience: ${escape(s.work_experience||'—')}<br>
       Photos: ${[s.photo_front,s.photo_back,s.photo_left,s.photo_right].filter(Boolean).length}/4</small></td>
     <td>${escape(s.status||'active')}</td>
-    <td><button class="action primary-action" onclick="viewProfile(${s.id})">View</button></td>
+    <td><button class="action primary-action" onclick="viewProfile(${s.id})">View</button> ${s.role==='master_admin'?'<button class="action" disabled>Protected</button>':'<button class="action success" onclick="editProfile('+s.id+')">Edit</button>'}</td>
   </tr>`).join('')||'<tr><td colspan="11">No profile records found.</td></tr>';
 }
 // END SECTION: FUNCTION renderProfileRecords
@@ -554,6 +568,7 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
   }catch(err){alert(err.message)}
 }));
 $('#pointTransferForm')?.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{await api('/point-transfers',{method:'POST',body:JSON.stringify(d)});msg('Point transfer request sent to Admin');e.target.reset();loadPointTransfers();}catch(err){alert(err.message)}});
+$('#directPointTransferForm')?.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));if(!confirm(`Change point for Staff ID ${d.staff_id} to ${d.to_location}?`))return;try{const r=await api('/point-transfers/direct',{method:'PUT',body:JSON.stringify(d)});msg(r.message||'Point changed successfully');e.target.reset();loadPointTransfers();refresh();}catch(err){alert(err.message)}});
 ['front','back','left','right'].forEach(k=>{
   $('#p_photo_'+k+'_file')?.addEventListener('change',e=>{
     const f=e.target.files?.[0]; if(!f)return;
@@ -737,7 +752,7 @@ async function loadRelievers(){
     const active=rows.filter(x=>x.status==='active');
     const selected=active.filter(x=>Number(x.is_reliever)===1).length;
     if($('#relieverTotal'))$('#relieverTotal').textContent=active.length; if($('#relieverSelected'))$('#relieverSelected').textContent=selected; if($('#relieverUnselected'))$('#relieverUnselected').textContent=Math.max(0,active.length-selected);
-    if(b)b.innerHTML=rows.map(x=>`<tr><td>${label(x.role)}</td><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.parent_id||'—')}</td><td>${x.is_reliever?'Yes':'No'}</td><td>${escape(x.status||'active')}</td></tr>`).join('');
+    if(b)b.innerHTML=rows.map(x=>`<tr><td>${label(x.role)}</td><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td><td>${escape(x.parent_id||'—')}</td><td>${x.is_reliever?'Yes':'No'}</td><td>${x.is_reliever?escape((Number(x.reliever_duty_hours)===8?8:12)+' Hours'):'—'}</td><td>${x.is_reliever?escape(x.reliever_shift||'—'):'—'}</td><td>${escape(x.status||'active')}</td></tr>`).join('');
     const selectedBox=$('#selectedRelieverRows'), unselectedBox=$('#unselectedRelieverRows');
     const rowMini=x=>`<tr><td>${escape(label(x.role))}</td><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.location_code||'—')}</td></tr>`;
     if(selectedBox)selectedBox.innerHTML=active.filter(x=>Number(x.is_reliever)===1).map(rowMini).join('')||'<tr><td colspan="4">No selected relievers.</td></tr>';
@@ -753,6 +768,15 @@ $('#markRelieverBtn')?.addEventListener('click',async()=>{
   try{await api('/staff/'+s.id+'/reliever',{method:'PUT',body:JSON.stringify({is_reliever:s.is_reliever?0:1})});msg(s.is_reliever?'Reliever removed':'Reliever enabled');loadRelievers();refresh()}catch(e){alert(e.message)}
 });
 $('#changeRelieverLocationBtn')?.addEventListener('click',async()=>{const id=$('#relieverStaff')?.value;if(!id)return alert('Select Guard/Supervisor first');const s=(window._relievers||[]).find(x=>x.staff_id===id);const loc=$('#relieverLocation')?.value;if(!s||!loc)return alert('Select Reliever and Location');try{await api('/staff/'+s.id+'/location',{method:'PUT',body:JSON.stringify({location_code:loc})});msg('Reliever location changed ✓');loadRelievers();refresh()}catch(e){alert(e.message)}});
+$('#relieverDutyHours')?.addEventListener('change',()=>{
+  const hours=Number($('#relieverDutyHours')?.value)===8?8:12;
+  const sel=$('#relieverShift'); if(!sel)return;
+  const options=hours===8
+    ? [['Morning Shift','Morning Shift — 06:00–14:00'],['Evening Shift','Evening Shift — 14:00–22:00'],['Night Shift 8H','Night Shift — 22:00–06:00']]
+    : [['Day Shift','Day Shift — 08:00–20:00'],['Night Shift','Night Shift — 20:00–08:00']];
+  sel.innerHTML=options.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
+});
+
 $('#relieverForm')?.addEventListener('submit',async e=>{
   e.preventDefault();
   const id=$('#relieverStaff')?.value, loc=$('#relieverLocation')?.value;
@@ -760,7 +784,7 @@ $('#relieverForm')?.addEventListener('submit',async e=>{
   const s=(window._relievers||[]).find(x=>x.staff_id===id);
   if(!s)return alert('Select a valid Guard/Supervisor');
   try{
-    const r=await api('/relievers/assign',{method:'POST',body:JSON.stringify({staff_id:s.staff_id,location_code:loc,shift:$('#relieverShift')?.value||'Day Shift'})});
+    const r=await api('/relievers/assign',{method:'POST',body:JSON.stringify({staff_id:s.staff_id,location_code:loc,duty_hours:Number($('#relieverDutyHours')?.value||12),shift:$('#relieverShift')?.value||'Day Shift'})});
     msg(r.whatsapp_sent?'Reliever assigned ✓ WhatsApp message sent':'Reliever assigned ✓ WhatsApp link ready');
     if(r.whatsapp_url && !r.whatsapp_sent){
       const open=confirm('Reliever assigned. WhatsApp Cloud API is not configured on the server. Open WhatsApp message now?');

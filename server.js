@@ -450,8 +450,7 @@ app.put('/api/staff/:id/profile',auth,roles('admin','master_admin'),(req,res)=>{
     if(err)return res.status(500).json({error:err.message});
     if(!s)return res.status(404).json({error:'Staff not found'});
     if(s.role==='master_admin')return res.status(403).json({error:'Master Admin profile is protected'});
-    if(s.role==='admin' && req.user.role!=='master_admin')return res.status(403).json({error:'Only Master Admin can manage Admin profiles'});
-    const newRole=['field_officer','officer','supervisor','guard'].includes(x.role)?x.role:s.role;
+    const newRole=['admin','field_officer','officer','supervisor','guard'].includes(x.role)?x.role:s.role;
     const location=String(x.location_code||'').trim();
     const parent=String(x.parent_id||'').trim();
     const validateEditLocation=(next)=>{
@@ -585,18 +584,20 @@ async function sendWhatsAppMessage(to,text){
 
 app.post('/api/relievers/assign',auth,roles('admin','master_admin'),async(req,res)=>{
   const staffId=String(req.body?.staff_id||'').trim(), location=String(req.body?.location_code||'').trim();
-  const shift=SHIFT_SCHEDULES[req.body?.shift]?req.body.shift:'Day Shift';
+  const dutyHours=Number(req.body?.duty_hours)===8?8:12;
+  const allowedShifts=shiftForDutyHours(dutyHours);
+  const shift=allowedShifts.includes(String(req.body?.shift||''))?String(req.body.shift):allowedShifts[0];
   if(!staffId||!location)return res.status(400).json({error:'Select Reliever and Location'});
   get('SELECT * FROM staff WHERE staff_id=? AND role IN ("guard","supervisor")',[staffId],async(e,s)=>{
     if(e)return res.status(500).json({error:e.message}); if(!s)return res.status(404).json({error:'Reliever Guard/Supervisor not found'});
     if(s.status!=='active')return res.status(400).json({error:'Only active staff can be assigned as Reliever'});
     get('SELECT code FROM locations WHERE code=? AND active=1',[location],async(le,lr)=>{
       if(le)return res.status(500).json({error:le.message}); if(!lr)return res.status(400).json({error:'Invalid or inactive Location Code'});
-      run('UPDATE staff SET is_reliever=1,location_code=? WHERE id=?',[location,s.id],res,async()=>{
-        const text=`SNDF MANAGEMENT – Reliever Duty\n\nHello ${s.name},\nYou have been assigned as a RELIEVER.\n\nLocation: ${location}\nShift: ${shift}\nStaff ID: ${s.staff_id}\nAssigned by: ${req.user.name||req.user.staff_id}\n\nPlease report to the assigned location and complete live attendance check-in.\n\nSNDF Support Services\nWhatsApp: ${process.env.WHATSAPP_SENDER_NUMBER||'8959872715'}`;
+      run('UPDATE staff SET is_reliever=1,location_code=?,reliever_duty_hours=?,reliever_shift=? WHERE id=?',[location,dutyHours,shift,s.id],res,async()=>{
+        const text=`SNDF MANAGEMENT – Reliever Duty\n\nHello ${s.name},\nYou have been assigned as a RELIEVER.\n\nLocation: ${location}\nDuty Hours: ${dutyHours} Hours\nShift: ${shift} (${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end})\nStaff ID: ${s.staff_id}\nAssigned by: ${req.user.name||req.user.staff_id}\n\nPlease report to the assigned location and complete live attendance check-in.\n\nSNDF Support Services\nWhatsApp: ${process.env.WHATSAPP_SENDER_NUMBER||'8959872715'}`;
         const wa=await sendWhatsAppMessage(s.contact_number,text);
-        audit(req.user,'RELIEVER_ASSIGNED',s.staff_id,`${location}; ${shift}; whatsapp=${wa.sent?'sent':'not-sent'}`);
-        res.json({message:'Reliever assignment saved',whatsapp_sent:wa.sent,whatsapp_url:wa.whatsapp_url||'',whatsapp_sender:wa.sender,whatsapp_error:wa.error||''});
+        audit(req.user,'RELIEVER_ASSIGNED',s.staff_id,`${location}; ${dutyHours} hour; ${shift}; whatsapp=${wa.sent?'sent':'not-sent'}`);
+        res.json({message:'Reliever assignment saved',whatsapp_sent:wa.sent,whatsapp_url:wa.whatsapp_url||'',whatsapp_sender:wa.sender,whatsapp_error:wa.error||'',duty_hours:dutyHours,shift,shift_time:`${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end}`});
       });
     });
   });
@@ -604,7 +605,7 @@ app.post('/api/relievers/assign',auth,roles('admin','master_admin'),async(req,re
 
 // RELIEVER MANAGEMENT - Admin selects Guard/Supervisor, can change their location and mark a reliever check-in.
 app.get('/api/relievers',auth,roles('admin','master_admin'),(req,res)=>{
-  all(`SELECT id,role,name,staff_id,location_code,parent_id,status,is_reliever FROM staff
+  all(`SELECT id,role,name,staff_id,location_code,parent_id,status,is_reliever,reliever_duty_hours,reliever_shift FROM staff
        WHERE role IN ('guard','supervisor') ORDER BY role,name`,[],res);
 });
 app.put('/api/staff/:id/reliever',auth,roles('admin','master_admin'),(req,res)=>{
@@ -1217,7 +1218,7 @@ app.put('/api/point-transfers/:id/approve',auth,roles('admin','master_admin'),(r
     if(!r)return res.status(404).json({error:'Transfer request not found'});
     if(r.status!=='Pending')return res.status(409).json({error:'Request already reviewed'});
     db.serialize(()=>{
-      db.run("UPDATE staff SET location_code=? WHERE staff_id=? AND role IN ('field_officer','officer','supervisor')",[r.to_location,r.staff_id],function(ue){
+      db.run("UPDATE staff SET location_code=? WHERE staff_id=? AND role IN ('field_officer','officer','supervisor','guard')",[r.to_location,r.staff_id],function(ue){
         if(ue)return res.status(500).json({error:ue.message});
         if(this.changes!==1)return res.status(404).json({error:'Staff member not found'});
         db.run("UPDATE point_transfer_requests SET status='Approved',reviewed_at=?,reviewed_by=? WHERE id=?",[new Date().toISOString(),req.user.staff_id,r.id],(re)=>{
@@ -1229,6 +1230,33 @@ app.put('/api/point-transfers/:id/approve',auth,roles('admin','master_admin'),(r
     });
   });
 });
+// DIRECT POINT TRANSFER - Admin/Master Admin can change any non-admin staff point by Staff ID without a request.
+app.put('/api/point-transfers/direct',auth,roles('admin','master_admin'),(req,res)=>{
+  const staffId=String(req.body?.staff_id||'').trim();
+  const to=String(req.body?.to_location||'').trim();
+  const reason=String(req.body?.reason||'').trim();
+  if(!staffId||!to)return res.status(400).json({error:'Staff ID and new Location Code are required'});
+  get('SELECT * FROM staff WHERE staff_id=?',[staffId],(e,s)=>{
+    if(e)return res.status(500).json({error:e.message});
+    if(!s)return res.status(404).json({error:'Staff ID not found'});
+    if(['master_admin','admin'].includes(s.role))return res.status(403).json({error:'Admin/Master Admin point cannot be changed from Point Transfer'});
+    get('SELECT code FROM locations WHERE code=? AND active=1',[to],(le,loc)=>{
+      if(le)return res.status(500).json({error:le.message});
+      if(!loc)return res.status(400).json({error:'Invalid or inactive Location Code'});
+      if(String(s.location_code||'')===to)return res.status(400).json({error:'Staff is already assigned to this point'});
+      db.run('UPDATE staff SET location_code=? WHERE staff_id=?',[to,staffId],function(ue){
+        if(ue)return res.status(500).json({error:ue.message});
+        if(this.changes!==1)return res.status(404).json({error:'Staff member not found'});
+        run('INSERT INTO point_transfer_requests(staff_id,staff_name,staff_role,from_location,to_location,reason,status,requested_at,reviewed_at,reviewed_by) VALUES(?,?,?,?,?,?,?,?,?,?)',
+          [s.staff_id,s.name,s.role,s.location_code||'',to,reason||'Direct transfer by Admin','Direct',new Date().toISOString(),new Date().toISOString(),req.user.staff_id],res,()=>{
+            audit(req.user,'POINT_TRANSFER_DIRECT',s.staff_id,`${s.location_code||''} -> ${to}${reason?` | ${reason}`:''}`);
+            res.json({message:`Point changed successfully for ${s.staff_id}`,staff_id:s.staff_id,new_location:to});
+          });
+      });
+    });
+  });
+});
+
 app.put('/api/point-transfers/:id/reject',auth,roles('admin','master_admin'),(req,res)=>{
   get("SELECT * FROM point_transfer_requests WHERE id=?",[req.params.id],(e,r)=>{
     if(e)return res.status(500).json({error:e.message}); if(!r)return res.status(404).json({error:'Transfer request not found'});
@@ -1352,6 +1380,9 @@ db.run(`CREATE TABLE IF NOT EXISTS locations (
 )`);
 // Location duty-shift migration: 12-hour or 8-hour duty per location.
 db.run("ALTER TABLE locations ADD COLUMN duty_shift TEXT NOT NULL DEFAULT '12_hour'",()=>{});
+// Reliever shift migration: stores assigned duty hours and shift separately.
+db.run("ALTER TABLE staff ADD COLUMN reliever_duty_hours INTEGER DEFAULT 12",()=>{});
+db.run("ALTER TABLE staff ADD COLUMN reliever_shift TEXT DEFAULT 'Day Shift'",()=>{});
 db.run("ALTER TABLE locations ADD COLUMN duty_hours INTEGER NOT NULL DEFAULT 12",()=>{});
 
 // =====================================================
