@@ -9,7 +9,7 @@ if(!user||!role||!(user.role===role || (role==='admin'&&user.role==='master_admi
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 function label(r){return {master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r}
 const isAdminRole=['admin','master_admin'].includes(role);
-function renderTopProfile(u=user){const r=u?.role||role;$$('.app-user').forEach(x=>{const dp=u?.dp||'assets-logo.png';x.innerHTML=`<img class="app-avatar" src="${escape(dp)}" alt="Profile"><div class="app-user-text"><b>${escape(u?.name||'')}</b><small>${escape(u?.staff_id||'')} • ${label(r)}</small></div>`});['welcomeName','welcomeProfileName'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.name||label(r)});['welcomeId','welcomeProfileId'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.staff_id||''});['welcomeRole','welcomeProfileRole'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=label(r)});const wd=$('#welcomeDp');if(wd)wd.src=u?.dp||'assets-logo.png';}
+function renderTopProfile(u=user){const r=u?.role||role;$$('.app-user').forEach(x=>{const dp=u?.dp||'assets-logo.png';x.innerHTML=`<img class="app-avatar" src="${escape(dp)}" alt="Profile"><div class="app-user-text"><b>${escape(u?.name||'')}</b><small>${escape(u?.staff_id||'')} • ${label(r)}</small></div>`});['welcomeName','welcomeProfileName'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.name||label(r)});['welcomeId','welcomeProfileId'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.staff_id||''});['welcomeRole','welcomeProfileRole'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=label(r)});const wd=$('#welcomeDp');if(wd)wd.src=u?.dp||'assets-logo.png';const pd=$('#p_dp_preview');if(pd)pd.src=u?.dp||'assets-logo.png';const pt=$('#p_profile_title');if(pt)pt.textContent=(u?.name||'Admin')+' Profile';}
 
 $$('[data-view]').forEach((b,i)=>{b.onclick=()=>{ $$('.view').forEach(v=>v.classList.add('hidden')); $('#'+b.dataset.view)?.classList.remove('hidden');$$('[data-view]').forEach(z=>z.classList.remove('active'));b.classList.add('active');$('.sidebar')?.classList.remove('open')};if(i===0)b.classList.add('active')});
 $('.mobile-toggle')?.addEventListener('click',()=>$('.sidebar')?.classList.toggle('open'));
@@ -632,7 +632,7 @@ if(['guard','supervisor'].includes(role)){
   initWebPush();
   openPointCamera();getPointGPS();loadPointStatus();setInterval(loadPointStatus,60000);
 }
-$('#logout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser');location.href='index.html'});
+$('#logout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser');location.href='index.html'});$('#topLogout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser');location.href='index.html'});
 loadProfile();refresh();
 if($('#p_staff_id')) $('#p_staff_id').value=user.staff_id;
 if(!isAdminRole){ $('#staff')?.remove(); $('#advance')?.remove(); $('#suspend')?.remove(); $('#profile-records')?.remove(); }
@@ -640,8 +640,9 @@ if(!isAdminRole) $$('[onclick^="downloadAttendance"]').forEach(b=>b.remove());
 if(!['admin','field_officer','officer'].includes(role)) $('#fine')?.querySelector('.fine-form')?.remove();
 if(isAdminRole) $('#fine')?.querySelector('.fine-form')?.insertAdjacentHTML('afterend','<p>Admin may fine Guard or Supervisor.</p>');
 // Admin controls admin profile; Field Officer, Supervisor and Guard can submit their complete profile.
-if(role==='admin') ['name','post','salary','dob','department','location_code'].forEach(k=>$('#p_'+k)?.removeAttribute('disabled'));
-$('#p_dp_file')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;const rd=new FileReader();rd.onload=()=>$('#p_dp').value=rd.result;rd.readAsDataURL(f)});
+if(role==='admin') ['name','post','salary','dob','department','location_code','age','height','weight','blood_group','qualification','physical_level','medical_level','skills','police_verification','driving_license','training_details','work_experience'].forEach(k=>$('#p_'+k)?.removeAttribute('disabled'));
+$('#p_dp_file')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{if($('#p_dp'))$('#p_dp').value=rd.result;if($('#p_dp_preview'))$('#p_dp_preview').src=rd.result;};rd.readAsDataURL(f)});
+['front','back','left','right'].forEach(k=>{$('#p_photo_'+k+'_file')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{$('#p_photo_'+k).value=rd.result;const img=$('#p_photo_'+k+'_preview');if(img)img.src=rd.result;if(k==='front'&&$('#p_dp'))$('#p_dp').value=rd.result;if(k==='front'&&$('#p_dp_preview'))$('#p_dp_preview').src=rd.result;};rd.readAsDataURL(f);});});
 
 $('#profileRoleFilter')?.addEventListener('change',()=>renderProfileRecords(staff));$('#profileLocationFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
 $('#reportMonth')?.setAttribute('value',new Date().toISOString().slice(0,7));
