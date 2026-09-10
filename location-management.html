@@ -242,15 +242,19 @@
       </main>
       <!-- END SECTION: MAIN -->
     </div>
+
     <script>
       // =====================================================
-      // LOCATION MANAGEMENT - ROBUST SAVE / UPDATE
+      // LOCATION MANAGEMENT - SAVE / UPDATE / DELETE
       // =====================================================
       const currentUser = JSON.parse(sessionStorage.getItem('sndfUser') || 'null');
-      if (!currentUser || !['admin','master_admin'].includes(currentUser.role)) {
+
+      if (!currentUser || !['admin', 'master_admin'].includes(currentUser.role)) {
         location.replace('login.html?role=admin');
       }
+
       const $ = id => document.getElementById(id);
+
       const locationForm = $('locationForm');
       const locationId = $('locationId');
       const codeInput = $('code');
@@ -264,93 +268,97 @@
       const formTitle = $('formTitle');
       const msg = $('msg');
       const saveButton = locationForm.querySelector('button[type="submit"]');
+
+      // Send the logged-in admin information with every API request.
       const headers = {
         'Content-Type': 'application/json',
         'x-staff-id': currentUser?.staff_id || 'admin',
         'x-role': currentUser?.role || 'admin'
       };
+
+      // -----------------------------------------------------
+      // SECTION: MESSAGE
+      // -----------------------------------------------------
       function showMessage(text, ok = true) {
         msg.textContent = text;
         msg.style.color = ok ? '#087443' : '#b42318';
       }
+
+      // -----------------------------------------------------
+      // SECTION: API HELPER
+      // -----------------------------------------------------
       async function apiJson(url, options = {}) {
         const response = await fetch(url, options);
         let data = {};
-        try { data = await response.json(); } catch (_) {}
-        if (!response.ok) throw new Error(data.error || `Server error (${response.status})`);
+
+        try {
+          data = await response.json();
+        } catch (_) {
+          // Server returned a non-JSON response.
+        }
+
+        if (!response.ok) {
+          throw new Error(data.error || `Server error (${response.status})`);
+        }
+
         return data;
       }
+
+      // -----------------------------------------------------
+      // SECTION: LOAD SAVED LOCATIONS
+      // -----------------------------------------------------
       async function loadLocations() {
         const body = $('locationRows');
-        body.innerHTML = '
-      <tr>
-        <td colspan="9">
-          Loading...
-        </td>
-      </tr>
-      ';
+
+        body.innerHTML = `
+          <tr>
+            <td colspan="9">Loading...</td>
+          </tr>
+        `;
+
         try {
           const rows = await apiJson('/api/locations', { headers });
+
           if (!Array.isArray(rows) || !rows.length) {
-            body.innerHTML = '
-      <tr>
-        <td colspan="9">
-          अभी कोई Location नहीं है।
-        </td>
-      </tr>
-      ';
+            body.innerHTML = `
+              <tr>
+                <td colspan="9">अभी कोई Location नहीं है।</td>
+              </tr>
+            `;
             return;
           }
+
           body.innerHTML = rows.map(x => `
-      <tr>
-        <td>
-          ${esc(x.code)}
-        </td>
-        <td>
-          ${esc(x.name)}
-        </td>
-        <td>
-          ${esc(x.address || '')}
-        </td>
-        <td>
-          ${Number(x.latitude).toFixed(6)}, ${Number(x.longitude).toFixed(6)}
-        </td>
-        <td>
-          ${Number(x.radius_meters)} m
-        </td>
-        <td>
-          ${x.duty_shift === '8_hour' ? '8 Hours Duty' : '12 Hours Duty'}
-        </td>
-        <td>
-          <b>
-            ${Number(x.duty_hours)===8 ? 8 : 12} Hours
-          </b>
-        </td>
-        <td>
-          ${x.active ? 'Active' : 'Inactive'}
-        </td>
-        <td>
-          <button type="button" onclick='editLocation(${JSON.stringify(x)})'>
-            Edit
-          </button>
-          <button type="button" class="danger" onclick="deleteLocation(${Number(x.id)})">
-            Delete
-          </button>
-        </td>
-      </tr>
-      `).join('');
+            <tr>
+              <td>${esc(x.code)}</td>
+              <td>${esc(x.name)}</td>
+              <td>${esc(x.address || '')}</td>
+              <td>${Number(x.latitude).toFixed(6)}, ${Number(x.longitude).toFixed(6)}</td>
+              <td>${Number(x.radius_meters)} m</td>
+              <td>${x.duty_shift === '8_hour' ? '8 Hours Duty' : '12 Hours Duty'}</td>
+              <td><b>${Number(x.duty_hours) === 8 ? 8 : 12} Hours</b></td>
+              <td>${x.active ? 'Active' : 'Inactive'}</td>
+              <td>
+                <button type="button" onclick='editLocation(${JSON.stringify(x)})'>Edit</button>
+                <button type="button" class="danger" onclick="deleteLocation(${Number(x.id)})">Delete</button>
+              </td>
+            </tr>
+          `).join('');
         } catch (err) {
           body.innerHTML = `
-      <tr>
-        <td colspan="9">
-          ${esc(err.message)}
-        </td>
-      </tr>
-      `;
+            <tr>
+              <td colspan="9">${esc(err.message)}</td>
+            </tr>
+          `;
         }
       }
+
+      // -----------------------------------------------------
+      // SECTION: SAVE / UPDATE LOCATION
+      // -----------------------------------------------------
       locationForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+
         const code = codeInput.value.trim();
         const name = nameInput.value.trim();
         const address = addressInput.value.trim();
@@ -359,101 +367,191 @@
         const radius_meters = Number(radiusInput.value);
         const duty_shift = dutyShiftInput.value;
         const id = locationId.value.trim();
-        if (!code || !name || !Number.isFinite(latitude) || latitude
-      < -90 || latitude >
-        90 ||
-              !Number.isFinite(longitude) || longitude
-        < -180 || longitude >
-          180 ||
-                !Number.isFinite(radius_meters) || radius_meters
-          <= 0) {
-    showMessage('Code, name, valid GPS coordinates और radius भरना जरूरी है।', false);
-    return;
-  }
 
-  const data = { code, name, address, latitude, longitude, radius_meters, duty_shift, active: 1 };
-  const url = id ? `/api/locations/${encodeURIComponent(id)}` : '/api/locations';
-  const method = id ? 'PUT' : 'POST';
+        // Validate all required values before sending them to the server.
+        if (
+          !code ||
+          !name ||
+          !Number.isFinite(latitude) ||
+          latitude < -90 ||
+          latitude > 90 ||
+          !Number.isFinite(longitude) ||
+          longitude < -180 ||
+          longitude > 180 ||
+          !Number.isFinite(radius_meters) ||
+          radius_meters <= 0
+        ) {
+          showMessage('Code, name, valid GPS coordinates और radius भरना जरूरी है।', false);
+          return;
+        }
 
-  saveButton.disabled = true;
-  saveButton.textContent = id ? '⏳ Updating...' : '⏳ Saving...';
-  showMessage('Location save हो रही है...', true);
+        const data = {
+          code,
+          name,
+          address,
+          latitude,
+          longitude,
+          radius_meters,
+          duty_shift,
+          active: 1
+        };
 
-  try {
-    const out = await apiJson(url, { method, headers, body: JSON.stringify(data) });
-    showMessage(id ? '✅ Location successfully update हो गई।' : `✅ Location save हो गई। ID: ${out.id || ''}`);
-    resetForm();
-    await loadLocations();
-  } catch (err) {
-    showMessage(`❌ ${err.message}`, false);
-  } finally {
-    saveButton.disabled = false;
-    saveButton.textContent = '💾 Save Location';
-  }
-});
+        const url = id
+          ? `/api/locations/${encodeURIComponent(id)}`
+          : '/api/locations';
 
-function editLocation(x) {
-  locationId.value = x.id;
-  codeInput.value = x.code || '';
-  nameInput.value = x.name || '';
-  addressInput.value = x.address || '';
-  latitudeInput.value = x.latitude ?? '';
-  longitudeInput.value = x.longitude ?? '';
-  radiusInput.value = x.radius_meters || 200;
-  dutyShiftInput.value = x.duty_shift === '8_hour' ? '8_hour' : '12_hour';
-  dutyHoursInput.value = (Number(x.duty_hours) === 8 ? 8 : 12) + ' Hours';
-  formTitle.textContent = '✏️ Edit Location';
-  saveButton.textContent = '💾 Update Location';
-  showMessage('Edit mode: changes करने के बाद Update Location दबाएँ।');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
+        const method = id ? 'PUT' : 'POST';
 
-async function deleteLocation(id) {
-  if (!confirm('क्या आप इस Location को delete करना चाहते हैं?')) return;
-  try {
-    await apiJson(`/api/locations/${encodeURIComponent(id)}`, { method: 'DELETE', headers });
-    showMessage('✅ Location delete हो गई।');
-    await loadLocations();
-  } catch (err) {
-    showMessage(`❌ ${err.message}`, false);
-  }
-}
+        saveButton.disabled = true;
+        saveButton.textContent = id ? '⏳ Updating...' : '⏳ Saving...';
+        showMessage('Location save हो रही है...', true);
 
-function useMyLocation() {
-  if (!navigator.geolocation) {
-    showMessage('इस device में GPS उपलब्ध नहीं है।', false);
-    return;
-  }
-  showMessage('📍 GPS location प्राप्त की जा रही है...');
-  navigator.geolocation.getCurrentPosition(
-    p =>
-          {
-                latitudeInput.value = p.coords.latitude.toFixed(7);
-                longitudeInput.value = p.coords.longitude.toFixed(7);
-                showMessage('✅ Current GPS coordinates भर दिए गए हैं। अब Save Location दबाएँ।');
-              },
-              err => showMessage(`GPS नहीं मिला: ${err.message || 'permission allow करें।'}`, false),
-              { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        try {
+          const out = await apiJson(url, {
+            method,
+            headers,
+            body: JSON.stringify(data)
+          });
+
+          showMessage(
+            id
+              ? '✅ Location successfully update हो गई।'
+              : `✅ Location save हो गई। ID: ${out.id || ''}`
+          );
+
+          resetForm();
+          await loadLocations();
+        } catch (err) {
+          showMessage(`❌ ${err.message}`, false);
+        } finally {
+          saveButton.disabled = false;
+          saveButton.textContent = '💾 Save Location';
+        }
+      });
+
+      // -----------------------------------------------------
+      // SECTION: EDIT LOCATION
+      // -----------------------------------------------------
+      function editLocation(x) {
+        locationId.value = x.id;
+        codeInput.value = x.code || '';
+        nameInput.value = x.name || '';
+        addressInput.value = x.address || '';
+        latitudeInput.value = x.latitude ?? '';
+        longitudeInput.value = x.longitude ?? '';
+        radiusInput.value = x.radius_meters || 200;
+        dutyShiftInput.value = x.duty_shift === '8_hour' ? '8_hour' : '12_hour';
+        dutyHoursInput.value = (Number(x.duty_hours) === 8 ? 8 : 12) + ' Hours';
+
+        formTitle.textContent = '✏️ Edit Location';
+        saveButton.textContent = '💾 Update Location';
+
+        showMessage('Edit mode: changes करने के बाद Update Location दबाएँ।');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      // -----------------------------------------------------
+      // SECTION: DELETE LOCATION
+      // -----------------------------------------------------
+      async function deleteLocation(id) {
+        if (!confirm('क्या आप इस Location को delete करना चाहते हैं?')) {
+          return;
+        }
+
+        try {
+          await apiJson(`/api/locations/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers
+          });
+
+          showMessage('✅ Location delete हो गई।');
+          await loadLocations();
+        } catch (err) {
+          showMessage(`❌ ${err.message}`, false);
+        }
+      }
+
+      // -----------------------------------------------------
+      // SECTION: CURRENT GPS
+      // -----------------------------------------------------
+      function useMyLocation() {
+        if (!navigator.geolocation) {
+          showMessage('इस device में GPS उपलब्ध नहीं है।', false);
+          return;
+        }
+
+        showMessage('📍 GPS location प्राप्त की जा रही है...');
+
+        navigator.geolocation.getCurrentPosition(
+          (p) => {
+            latitudeInput.value = p.coords.latitude.toFixed(7);
+            longitudeInput.value = p.coords.longitude.toFixed(7);
+
+            showMessage(
+              '✅ Current GPS coordinates भर दिए गए हैं। अब Save Location दबाएँ।'
             );
+          },
+          (err) => {
+            showMessage(
+              `GPS नहीं मिला: ${err.message || 'permission allow करें।'}`,
+              false
+            );
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
           }
-          function resetForm() {
-            locationForm.reset();
-            locationId.value = '';
-            radiusInput.value = 200;
-            formTitle.textContent = '📍 Add New Location';
-            saveButton.textContent = '💾 Save Location';
-            msg.textContent = '';
-          }
-          function esc(v) {
-            return String(v ?? '').replace(/[&<>"']/g, m => ({
-              '&':'&amp;', '
-          <':'&lt;', '>
-          ':'&gt;', '"':'&quot;', "'":'&#39;'
-            }[m]));
-          }
-          dutyShiftInput.addEventListener('change',()=>{ dutyHoursInput.value=(dutyShiftInput.value==='8_hour'?8:12)+' Hours'; });
-          dutyHoursInput.value=(dutyShiftInput.value==='8_hour'?8:12)+' Hours';
-          loadLocations();
-        </script>
-      </body>
+        );
+      }
+
+      // -----------------------------------------------------
+      // SECTION: RESET FORM
+      // -----------------------------------------------------
+      function resetForm() {
+        locationForm.reset();
+        locationId.value = '';
+        radiusInput.value = 200;
+        dutyShiftInput.value = '12_hour';
+        dutyHoursInput.value = '12 Hours';
+        formTitle.textContent = '📍 Add New Location';
+        saveButton.textContent = '💾 Save Location';
+        msg.textContent = '';
+      }
+
+      // -----------------------------------------------------
+      // SECTION: HTML ESCAPE
+      // -----------------------------------------------------
+      function esc(v) {
+        return String(v ?? '').replace(/[&<>"']/g, (m) => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        }[m]));
+      }
+
+      // -----------------------------------------------------
+      // SECTION: DUTY SHIFT
+      // -----------------------------------------------------
+      dutyShiftInput.addEventListener('change', () => {
+        dutyHoursInput.value =
+          (dutyShiftInput.value === '8_hour' ? 8 : 12) + ' Hours';
+      });
+
+      dutyHoursInput.value =
+        (dutyShiftInput.value === '8_hour' ? 8 : 12) + ' Hours';
+
+      // -----------------------------------------------------
+      // SECTION: INITIAL LOAD
+      // -----------------------------------------------------
+      loadLocations();
+
+      // =====================================================
+      // END LOCATION MANAGEMENT JAVASCRIPT
+      // =====================================================
+    </script>
+
+  </body>
     </html>
