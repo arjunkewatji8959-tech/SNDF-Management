@@ -1,9 +1,3 @@
-/* =====================================================
-   SNDF MANAGEMENT | SERVER / API
-   Node.js + Express + SQLite backend.
-   Keep API routes grouped by feature for maintenance.
-   ===================================================== */
-
 // =====================================================
 // SNDF MANAGEMENT | JAVASCRIPT SECTIONS
 // File-level guide: keep each feature inside its marked section.
