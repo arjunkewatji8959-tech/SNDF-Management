@@ -943,3 +943,137 @@ table tbody tr:hover{background:#F5FAFE!important;}
   .sidebar{background:#0B4F86!important;}
   .sidebar button.active,.sidebar a.active{background:#fff!important;color:#0B4F86!important;}
 }
+
+
+/* =========================================================
+   SNDF BLUE & WHITE MASTER UI — FINAL POLISH
+   Applies consistently to Master Admin, Admin, Field Officer,
+   Officer, Supervisor and Guard dashboards.
+   ========================================================= */
+:root{
+  --sn-blue:#1769AA;
+  --sn-blue-2:#0B4F86;
+  --sn-blue-3:#0A3D68;
+  --sn-sky:#EAF4FC;
+  --sn-bg:#F3F8FD;
+  --sn-border:#C7DDED;
+  --sn-text:#123B60;
+}
+body{background:var(--sn-bg)!important;color:var(--sn-text)!important;}
+
+/* Header stays strong SNDF blue */
+.appbar,.app-header,.topbar,.dashboard-header{
+  background:linear-gradient(135deg,#0A3D68 0%,#1769AA 62%,#2384C5 100%)!important;
+  box-shadow:0 5px 18px rgba(10,61,104,.16)!important;
+}
+
+/* EVERY SIDEBAR NAV BUTTON = BLUE */
+.sidebar{
+  background:linear-gradient(180deg,#0A3D68 0%,#0D568A 55%,#1769AA 100%)!important;
+  padding-bottom:14px!important;
+}
+.sidebar button,.sidebar a{
+  background:#1769AA!important;
+  color:#fff!important;
+  border:1px solid rgba(255,255,255,.18)!important;
+  border-radius:10px!important;
+  margin:3px 10px!important;
+  width:calc(100% - 20px)!important;
+  box-shadow:0 3px 8px rgba(4,35,63,.12)!important;
+  transition:all .18s ease!important;
+}
+.sidebar button:hover,.sidebar a:hover{
+  background:#2384C5!important;
+  color:#fff!important;
+  transform:translateX(2px)!important;
+  box-shadow:0 5px 13px rgba(4,35,63,.18)!important;
+}
+.sidebar button.active,.sidebar a.active,.sidebar .active{
+  background:#EAF4FC!important;
+  color:#0B4F86!important;
+  border-color:#B8D9EE!important;
+  box-shadow:0 5px 14px rgba(4,35,63,.18)!important;
+  font-weight:700!important;
+}
+.side-label{color:#C6E5F8!important;font-weight:700!important;letter-spacing:.14em!important;}
+
+/* Move Profile + Logout into the sidebar/mobile menu */
+.app-profile-wrap{display:none!important;}
+.sidebar-account{
+  margin:14px 10px 4px!important;
+  padding:12px!important;
+  border-radius:14px!important;
+  background:rgba(255,255,255,.10)!important;
+  border:1px solid rgba(255,255,255,.20)!important;
+}
+.sidebar-account-title{
+  color:#C6E5F8!important;
+  font-size:10px!important;
+  font-weight:800!important;
+  letter-spacing:.16em!important;
+  margin:2px 4px 8px!important;
+}
+.sidebar-profile-btn,.sidebar-logout-btn{
+  margin:4px 0!important;width:100%!important;
+  min-height:44px!important;
+}
+.sidebar-profile-btn{
+  display:flex!important;align-items:center!important;gap:10px!important;
+  background:#fff!important;color:#0B4F86!important;
+  border-color:#D8EBF8!important;
+}
+.sidebar-profile-btn:hover{background:#EAF4FC!important;color:#0A3D68!important;transform:none!important;}
+.sidebar-profile-text{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;min-width:0;}
+.sidebar-profile-text b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
+.sidebar-profile-text small{font-size:10px;opacity:.72;}
+.sidebar-logout-btn{background:#1769AA!important;color:#fff!important;font-weight:800!important;}
+.sidebar-logout-btn:hover{background:#0B4F86!important;}
+
+/* Main action buttons — BLUE + WHITE TEXT */
+button.primary,button[type="submit"],input[type="submit"],.btn-primary,.primary-action,.action.primary-action,.login-button,
+.create-btn,.save-btn,.submit-btn,.download-btn,.payment-done{
+  background:#1769AA!important;color:#fff!important;border:1px solid #1769AA!important;
+  box-shadow:0 5px 12px rgba(23,105,170,.18)!important;
+}
+button.primary:hover,button[type="submit"]:hover,input[type="submit"]:hover,.btn-primary:hover,.primary-action:hover,.action.primary-action:hover,
+.create-btn:hover,.save-btn:hover,.submit-btn:hover,.download-btn:hover,.payment-done:hover{
+  background:#0B4F86!important;color:#fff!important;border-color:#0B4F86!important;transform:translateY(-1px)!important;
+}
+/* Generic buttons are also clearly blue */
+button,.btn,.action,.action-btn,.nav-btn,.location-management-btn{
+  border-radius:9px!important;
+}
+
+/* Cards / forms: clean white, blue edges */
+.card,.panel,.premium-card,.premium-panel,.table-wrap,.form-card,.account-card,.notice-item,
+section.view>div,.stat-card{
+  background:#fff!important;border-color:#C7DDED!important;
+}
+.panel:hover,.card:hover,.form-card:hover,.premium-card:hover{
+  border-color:#8DBCE0!important;box-shadow:0 10px 25px rgba(11,61,110,.10)!important;
+}
+
+/* Premium dashboard */
+.premium-overview{color:#123B60!important;}
+.premium-overview-head h2{color:#0B3D68!important;font-weight:750!important;}
+.premium-card strong{color:#0B4F86!important;}
+.premium-overview .live-badge{background:#E8FAF3!important;color:#087A57!important;border-color:#9BE1C8!important;}
+
+/* Better stat cards */
+.premium-card{border-top:4px solid #1769AA!important;}
+
+/* Inputs */
+input,select,textarea{background:#fff!important;border:1px solid #C7DDED!important;color:#173A5E!important;border-radius:9px!important;}
+input:focus,select:focus,textarea:focus{border-color:#1769AA!important;box-shadow:0 0 0 3px rgba(23,105,170,.12)!important;outline:none!important;}
+
+/* Mobile: menu becomes a polished blue drawer; profile/logout stay inside it */
+@media(max-width:850px){
+  .appbar{min-height:64px!important;}
+  .mobile-toggle{background:#fff!important;color:#0B4F86!important;border:1px solid #D8EBF8!important;border-radius:9px!important;}
+  .sidebar{box-shadow:8px 0 28px rgba(5,38,65,.24)!important;}
+  .sidebar button,.sidebar a{min-height:43px!important;font-size:14px!important;}
+  .sidebar-account{margin-top:18px!important;}
+}
+@media(min-width:851px){
+  .sidebar-account{margin-top:18px!important;}
+}

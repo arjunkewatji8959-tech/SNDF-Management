@@ -17,22 +17,6 @@
      SECURITY SERVICES
     </small>
    </a>
-   <div class="app-profile-wrap">
-    <button class="app-user" id="appUser" title="Open My Profile" type="button">
-     <img alt="Profile" class="app-avatar" src="assets-logo.png"/>
-     <div class="app-user-text">
-      <b>
-       Admin
-      </b>
-      <small>
-       ADMIN
-      </small>
-     </div>
-    </button>
-    <button class="top-logout" id="topLogout" type="button">
-     ⇥ Logout
-    </button>
-   </div>
    <button class="mobile-toggle">
     ☰
    </button>
@@ -96,7 +80,16 @@
     <button class="exit" id="logout">
      ⇥ Logout
     </button>
-   </aside>
+ 
+    <div class="sidebar-account">
+      <div class="sidebar-account-title">ACCOUNT</div>
+      <button class="sidebar-profile-btn" id="appUser" title="Open My Profile" type="button">
+        <img class="app-avatar" src="assets-logo.png" alt="Profile">
+        <span class="sidebar-profile-text"><b id="sidebarUserName">Profile</b><small id="sidebarUserRole">Account</small></span>
+      </button>
+      <button class="sidebar-logout-btn" id="topLogout" type="button">⇥ Logout</button>
+    </div>
+  </aside>
    <main class="dash-main">
     <div class="status" id="status">
     </div>
