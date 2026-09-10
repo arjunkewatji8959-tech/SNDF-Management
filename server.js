@@ -444,43 +444,35 @@ app.get('/api/profile-update-sheet',auth,roles('admin','master_admin'),(req,res)
   });
 });
 
-app.post('/api/staff',auth,roles('admin','master_admin','field_officer','officer','supervisor'),(req,res)=>{
+app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   const x=req.body||{};
   const role=String(x.role||'').trim().toLowerCase();
   const staffId=String(x.staff_id||'').trim();
   const password=String(x.password??'');
-  if(!['admin','field_officer','officer','supervisor','guard'].includes(role) || !String(x.name||'').trim() || !staffId || !password) return res.status(400).json({error:'Role, name, Staff ID and password are required'});
-  if(password.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});
-  if(role==='admin' && req.user.role!=='master_admin') return res.status(403).json({error:'Only Master Admin can create a new Admin'});
-  // =====================================================
-  // SECTION: ROLE HIERARCHY
-  // Master Admin -> Admin -> Field Officer -> Supervisor -> Guard
-  // Field Officer manages all locations/points and all Supervisors.
-  // =====================================================
-  const createTargets={master_admin:['admin','field_officer','supervisor','guard'],admin:['field_officer'],field_officer:['supervisor'],supervisor:['guard'],officer:[],guard:[]};
-  if(!createTargets[req.user.role]?.includes(role)) return res.status(403).json({error:`${req.user.role} cannot create ${role}`});
-  if(role==='master_admin') return res.status(403).json({error:'Master Admin account is controlled by the system'});
   const location=String(x.location_code||'').trim();
-  const parent=role==='admin' ? 'adi123' : String(x.parent_id||'').trim();
-  get('SELECT id FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
-    if(duplicateErr)return res.status(500).json({error:duplicateErr.message});
-    if(duplicate)return res.status(409).json({error:`Staff ID ${staffId} already exists. Use a unique Staff ID.`});
-    finish();
-  });
-  const finish=()=>{
-    bcrypt.hash(password,12,(he,hashed)=>{
-      if(he)return res.status(500).json({error:'Password setup failed'});
-      run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,dob,department,contact_number,dp,age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,driving_license,training_details,work_experience,photo_front,photo_back,photo_left,photo_right,is_reliever) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [role,String(x.name).trim(),staffId,hashed,x.post||role,x.salary||0,location,parent,x.dob||'',x.department||'',x.contact_number||'',x.dp||'',
-         x.age||null,x.height||null,x.weight||null,x.blood_group||'',x.qualification||'',x.physical_level||'',x.medical_level||'',x.skills||'',x.police_verification||'',x.driving_license||'',x.training_details||'',x.work_experience||'',x.photo_front||'',x.photo_back||'',x.photo_left||'',x.photo_right||'',Number(x.is_reliever)?1:0],res,row=>{
-          audit(req.user,'STAFF_CREATED',x.staff_id,`${role} ${x.name} created`);
-          res.status(201).json({id:row.lastID,message:'Staff created'});
-        });
-    });
-  };
+  const fieldOfficerId=String(x.field_officer_id||'').trim();
+  let parent=String(x.parent_id||'').trim();
+
+  if(!['admin','field_officer','officer','supervisor','guard'].includes(role) || !String(x.name||'').trim() || !staffId || !password){
+    return res.status(400).json({error:'Role, name, Staff ID and password are required'});
+  }
+  if(password.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});
+
+  // =====================================================
+  // CREATION PERMISSION UPDATE
+  // Only Admin and Master Admin can create staff accounts.
+  // Field Officer / Officer / Supervisor / Guard cannot create any account.
+  // Officer, Supervisor and Guard creation requires a valid Field Officer ID.
+  // =====================================================
+  if(['officer','supervisor','guard'].includes(role) && !fieldOfficerId){
+    return res.status(400).json({error:'Field Officer ID is required to create this member'});
+  }
+
+  // Parent rules.
+  if(role==='admin') parent=req.user.staff_id;
+  if(role==='officer' || role==='supervisor') parent=fieldOfficerId;
+
   const validateLocation=(next)=>{
-    // Field Officers are multi-point managers, so their own location is optional.
-    // Supervisors and Guards must have a valid active Location Code.
     if(role==='admin' || role==='field_officer') return next();
     if(!location)return res.status(400).json({error:'Please create/select a Location Code first'});
     get('SELECT code FROM locations WHERE code=? AND active=1',[location],(le,lr)=>{
@@ -489,36 +481,57 @@ app.post('/api/staff',auth,roles('admin','master_admin','field_officer','officer
       next();
     });
   };
-  validateLocation(()=>{
-    // Field Officer parent can be an Admin or Master Admin.
+
+  const validateHierarchy=(next)=>{
+    if(role==='admin') return next();
     if(role==='field_officer'){
       if(!parent)return res.status(400).json({error:'Field Officer Parent ID must be an Admin or Master Admin ID'});
-      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{
+      return get('SELECT role FROM staff WHERE staff_id=? AND status=\'active\'',[parent],(e,p)=>{
         if(e)return res.status(500).json({error:e.message});
-        if(!p || !['admin','master_admin'].includes(p.role))return res.status(400).json({error:'Field Officer Parent ID must be an Admin or Master Admin ID'});
-        finish();
+        if(!p || !['admin','master_admin'].includes(p.role))return res.status(400).json({error:'Field Officer Parent ID must be an active Admin or Master Admin ID'});
+        next();
       });
     }
-    // Supervisor parent must be a Field Officer.
-    if(role==='supervisor'){
-      if(!parent)return res.status(400).json({error:'Supervisor Parent ID must be a Field Officer ID'});
-      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{
+    if(role==='officer' || role==='supervisor'){
+      return get('SELECT role FROM staff WHERE staff_id=? AND status=\'active\'',[fieldOfficerId],(e,p)=>{
         if(e)return res.status(500).json({error:e.message});
-        if(!p || p.role!=='field_officer')return res.status(400).json({error:'Supervisor Parent ID must be a Field Officer ID'});
-        finish();
+        if(!p || p.role!=='field_officer')return res.status(400).json({error:'Enter a valid active Field Officer ID'});
+        next();
       });
     }
-    // Guard parent must be a Supervisor and the Guard point must match the Supervisor point.
     if(role==='guard'){
-      if(!parent)return res.status(400).json({error:'Guard Parent ID must be a Supervisor ID'});
-      return get('SELECT role,location_code FROM staff WHERE staff_id=?',[parent],(e,p)=>{
+      if(!parent)return res.status(400).json({error:'Supervisor ID is required to create a Guard'});
+      return get('SELECT role,location_code,parent_id FROM staff WHERE staff_id=? AND status=\'active\'',[parent],(e,supervisor)=>{
         if(e)return res.status(500).json({error:e.message});
-        if(!p || p.role!=='supervisor')return res.status(400).json({error:'Guard Parent ID must be a Supervisor ID'});
-        if(p.location_code!==location)return res.status(400).json({error:'Guard location must match the Supervisor location'});
-        finish();
+        if(!supervisor || supervisor.role!=='supervisor')return res.status(400).json({error:'Guard Parent ID must be a valid active Supervisor ID'});
+        if(String(supervisor.parent_id||'')!==fieldOfficerId)return res.status(400).json({error:'Selected Supervisor is not under the entered Field Officer ID'});
+        if(supervisor.location_code!==location)return res.status(400).json({error:'Guard location must match the Supervisor location'});
+        get('SELECT role FROM staff WHERE staff_id=? AND status=\'active\'',[fieldOfficerId],(fe,fo)=>{
+          if(fe)return res.status(500).json({error:fe.message});
+          if(!fo || fo.role!=='field_officer')return res.status(400).json({error:'Enter a valid active Field Officer ID'});
+          next();
+        });
       });
     }
-    finish();
+    next();
+  };
+
+  const createStaff=()=>{
+    bcrypt.hash(password,12,(he,hashed)=>{
+      if(he)return res.status(500).json({error:'Password setup failed'});
+      run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,dob,department,contact_number,dp,age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,driving_license,training_details,work_experience,photo_front,photo_back,photo_left,photo_right,is_reliever) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [role,String(x.name).trim(),staffId,hashed,x.post||role,x.salary||0,location,parent,x.dob||'',x.department||'',x.contact_number||'',x.dp||'',
+         x.age||null,x.height||null,x.weight||null,x.blood_group||'',x.qualification||'',x.physical_level||'',x.medical_level||'',x.skills||'',x.police_verification||'',x.driving_license||'',x.training_details||'',x.work_experience||'',x.photo_front||'',x.photo_back||'',x.photo_left||'',x.photo_right||'',Number(x.is_reliever)?1:0],res,row=>{
+          audit(req.user,'STAFF_CREATED',staffId,`${role} ${x.name} created; Field Officer ID: ${fieldOfficerId||'N/A'}`);
+          res.status(201).json({id:row.lastID,message:'Staff created'});
+        });
+    });
+  };
+
+  get('SELECT id FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
+    if(duplicateErr)return res.status(500).json({error:duplicateErr.message});
+    if(duplicate)return res.status(409).json({error:`Staff ID ${staffId} already exists. Use a unique Staff ID.`});
+    validateLocation(()=>validateHierarchy(createStaff));
   });
 });
 app.delete('/api/staff/:id',auth,roles('admin','master_admin'),(req,res)=>run('DELETE FROM staff WHERE id=?',[req.params.id],res,()=>res.json({message:'Deleted'})));

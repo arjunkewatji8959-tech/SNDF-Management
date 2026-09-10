@@ -37,9 +37,17 @@ function msg(t){const x=$('#status');if(x){x.textContent=t;x.style.display='bloc
 
 function escape(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 renderTopProfile();
-const createRoleSelect=$('form[data-type="staff"] select[name="role"]');
-if(createRoleSelect && user?.role!=='master_admin') [...createRoleSelect.options].filter(o=>o.value==='admin').forEach(o=>o.remove());
 let staff=[];
+
+// Only Admin and Master Admin may create accounts. Remove creation forms elsewhere.
+if(!['admin','master_admin'].includes(user?.role)){
+  $$('form[data-type="staff"]').forEach(f=>{
+    const panel=f.closest('.panel');
+    if(panel){ panel.innerHTML='<p class="muted-note"><b>View only:</b> Only Admin or Master Admin can create staff accounts.</p>'; }
+    else f.remove();
+  });
+}
+
 
 // =====================================================
 
@@ -283,17 +291,23 @@ function renderStaff(list){
 // =====================================================
 
 function fillCreateParent(list){
-  const roleSel=$('form[data-type="staff"] select[name="role"]'), locSel=$('#createLocation'), parentSel=$('#createParent');
+  const roleSel=$('form[data-type="staff"] select[name="role"]'), locSel=$('#createLocation'), parentSel=$('#createParent'), foSel=$('#createFieldOfficer');
   if(!roleSel||!parentSel)return;
   const roleVal=roleSel.value, loc=locSel?.value||'';
   let parents=[];
-  // Field Officer can be assigned under Admin or Master Admin.
   if(roleVal==='field_officer')parents=list.filter(s=>['admin','master_admin'].includes(s.role));
-  // Supervisor is directly under Field Officer.
-  if(roleVal==='supervisor')parents=list.filter(s=>s.role==='field_officer');
-  // Guard is directly under Supervisor at the same point.
+  if(roleVal==='officer' || roleVal==='supervisor')parents=list.filter(s=>s.role==='field_officer');
   if(roleVal==='guard')parents=list.filter(s=>s.role==='supervisor' && (!loc||s.location_code===loc));
-  parentSel.innerHTML='<option value="">Parent ID</option>'+parents.map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${escape(s.staff_id)}${s.location_code?' • '+escape(s.location_code):''}</option>`).join('');
+  if(roleVal==='admin')parents=[];
+  parentSel.innerHTML='<option value="">Parent ID / Supervisor ID</option>'+parents.map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${escape(s.staff_id)}${s.location_code?' • '+escape(s.location_code):''}</option>`).join('');
+  if(foSel){
+    const fos=list.filter(s=>s.role==='field_officer' && s.status!=='inactive');
+    foSel.innerHTML='<option value="">Field Officer ID'+(['officer','supervisor','guard'].includes(roleVal)?' (Required)':' (Not required)')+'</option>'+fos.map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${escape(s.staff_id)}</option>`).join('');
+    foSel.required=['officer','supervisor','guard'].includes(roleVal);
+    foSel.disabled=['admin','field_officer'].includes(roleVal);
+    if(foSel.disabled)foSel.value='';
+    if((roleVal==='officer'||roleVal==='supervisor') && parentSel.value)foSel.value=parentSel.value;
+  }
 }
 
 // END SECTION: FUNCTION fillCreateParent
@@ -597,6 +611,7 @@ $('#downloadAttendanceMatrix')?.addEventListener('click',()=>{const m=$('#attend
 $('#attendanceMonth')?.addEventListener('change',()=>{if(isAdminRole)refresh()});$('#dailyDate')?.setAttribute('value',new Date().toISOString().slice(0,10));$('#attendanceMonth')?.setAttribute('value',new Date().toISOString().slice(0,7));$('#dailyDate')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));$('#dailyLocation')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#dailyIdSearch')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#attendanceIdSearch')?.addEventListener('input',()=>renderAttendance(window._attendanceRows||[]));window.downloadAttendanceMonth=(r)=>{const m=$('#attendanceMonth')?.value;if(!m)return alert('Select a month first');downloadAttendance(r,'',m)};
 $('form[data-type="staff"] select[name="role"]')?.addEventListener('change',()=>fillCreateParent(staff));
 $('#createLocation')?.addEventListener('change',()=>fillCreateParent(staff));
+$('#createParent')?.addEventListener('change',e=>{const r=$('#createRole')?.value,fo=$('#createFieldOfficer');if(fo&&['officer','supervisor'].includes(r))fo.value=e.target.value;});
 $('#profileRoleFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
 $('#profileLocationFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
 $('#downloadProfileUpdateSheet')?.addEventListener('click',()=>{

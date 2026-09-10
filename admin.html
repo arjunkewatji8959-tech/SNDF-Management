@@ -1104,14 +1104,17 @@
                 <option value="field_officer">
                   Field Officer (Parent: Admin / Master Admin)
                 </option>
+                <option value="officer">
+                  Officer (Field Officer ID Required)
+                </option>
                 <option value="supervisor">
                   Supervisor (Parent: Field Officer)
                 </option>
                 <option value="guard">
                   Guard (Parent: Supervisor)
                 </option>
-                <option value="admin" class="master-only-option">
-                  Admin (Master Admin Only)
+                <option value="admin">
+                  Admin
                 </option>
               </select>
               <input name="name" placeholder="Full Name" required>
@@ -1130,6 +1133,9 @@
                 <option value="">
                   Parent ID
                 </option>
+              </select>
+              <select name="field_officer_id" id="createFieldOfficer">
+                <option value="">Field Officer ID (Required for Officer / Supervisor / Guard)</option>
               </select>
               <input name="contact_number" placeholder="Contact Number">
               <button class="action primary-action">
