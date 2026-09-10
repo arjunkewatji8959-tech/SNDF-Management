@@ -21,6 +21,44 @@ input{padding:11px;border:1px solid #cbd7e6;border-radius:8px;font-size:15px;wid
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}button{border:0;border-radius:8px;padding:11px 16px;background:#1764b5;color:#fff;cursor:pointer}button.secondary{background:#667085}button.danger{background:#b42318}button:disabled{opacity:.65;cursor:not-allowed}
 .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px solid #e5eaf0;text-align:left;white-space:nowrap}th{background:#f7faff}.msg{font-weight:700;margin-top:10px;min-height:20px}.muted{color:#667085}
 @media(max-width:760px){.mobile-toggle{display:block}.layout{display:block}.sidebar{display:none;width:100%}.sidebar.open{display:block}.grid{grid-template-columns:1fr}.main{padding:14px}.actions button{flex:1 1 150px}}
+
+/* SNDF PREMIUM DARK-BLUE BUTTONS */
+button{
+  font-family:inherit;
+  font-weight:700;
+  border-radius:8px;
+  background:linear-gradient(135deg,#08284f,#0d3f78) !important;
+  color:#fff !important;
+  border:1px solid #08284f !important;
+  box-shadow:0 6px 16px rgba(8,40,79,.20);
+  transition:background .22s ease,border-color .22s ease,box-shadow .22s ease,transform .18s ease;
+}
+button:hover{
+  background:linear-gradient(135deg,#155bb2,#08284f) !important;
+  border-color:#155bb2 !important;
+  transform:translateY(-2px);
+  box-shadow:0 10px 22px rgba(8,40,79,.28);
+}
+button:active{transform:translateY(0) scale(.98);box-shadow:0 4px 10px rgba(8,40,79,.16)}
+button.secondary{
+  background:linear-gradient(135deg,#08284f,#174e8d) !important;
+  color:#fff !important;
+}
+button.danger{
+  background:linear-gradient(135deg,#9f2222,#e44747) !important;
+  color:#fff !important;
+}
+.mobile-toggle{
+  background:#08284f !important;
+  color:#fff !important;
+  border:1px solid #155bb2 !important;
+}
+input:focus{
+  outline:none;
+  border-color:#155bb2 !important;
+  box-shadow:0 0 0 3px rgba(21,91,178,.12);
+}
+
 </style>
 </head>
 <body>

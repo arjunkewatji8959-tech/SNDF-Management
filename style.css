@@ -528,3 +528,217 @@ button.primary-action:hover,
     display:flex;
   }
 }
+
+
+/* =========================================================
+   SNDF PREMIUM DARK-BLUE BUTTON SYSTEM
+   Final UI pass: remove pale/light-blue button styling.
+   All primary/action/submit buttons use the SNDF dark-blue
+   palette with polished hover, focus and press states.
+   ========================================================= */
+
+/* Unified SNDF blue palette */
+:root{
+  --sn-primary:#08284f;
+  --sn-primary-2:#0d3f78;
+  --sn-hover:#155bb2;
+  --sn-border:#174e8d;
+  --sn-text:#ffffff;
+}
+
+/* Every standard button / action button */
+button,
+.btn,
+.action,
+.login-button,
+.login-submit,
+.primary-action,
+.ghost-action{
+  font-family:inherit;
+  font-weight:700;
+  border-radius:8px;
+  transition:
+    background .22s ease,
+    border-color .22s ease,
+    box-shadow .22s ease,
+    transform .18s ease,
+    filter .22s ease;
+}
+
+/* Main buttons */
+.btn-primary,
+.action,
+.login-button,
+.login-submit,
+.primary-action{
+  background:linear-gradient(135deg,var(--sn-primary),var(--sn-primary-2)) !important;
+  color:#fff !important;
+  border:1px solid var(--sn-primary) !important;
+  box-shadow:0 6px 16px rgba(8,40,79,.20);
+}
+
+/* Outline buttons also stay in the same dark-blue family */
+.btn-outline,
+.ghost-action{
+  background:#fff !important;
+  color:var(--sn-primary) !important;
+  border:1px solid var(--sn-primary) !important;
+  box-shadow:0 4px 12px rgba(8,40,79,.10);
+}
+
+/* Hover = darker, brighter and lifted */
+.btn-primary:hover,
+.action:hover,
+.login-button:hover,
+.login-submit:hover,
+.primary-action:hover{
+  background:linear-gradient(135deg,#155bb2,#08284f) !important;
+  color:#fff !important;
+  border-color:#155bb2 !important;
+  transform:translateY(-2px);
+  box-shadow:0 10px 22px rgba(8,40,79,.28);
+  filter:none !important;
+}
+
+.btn-outline:hover,
+.ghost-action:hover{
+  background:linear-gradient(135deg,#08284f,#155bb2) !important;
+  color:#fff !important;
+  border-color:#08284f !important;
+  transform:translateY(-2px);
+  box-shadow:0 10px 22px rgba(8,40,79,.22);
+}
+
+/* Click feedback */
+.btn-primary:active,
+.btn-outline:active,
+.action:active,
+.login-button:active,
+.login-submit:active,
+.primary-action:active,
+.ghost-action:active{
+  transform:translateY(0) scale(.98);
+  box-shadow:0 4px 10px rgba(8,40,79,.16);
+}
+
+/* Keyboard accessibility */
+button:focus-visible,
+.btn:focus-visible,
+.action:focus-visible,
+.login-button:focus-visible,
+.login-submit:focus-visible{
+  outline:3px solid rgba(21,91,178,.28);
+  outline-offset:2px;
+}
+
+/* Keep semantic warning/success buttons, but make them polished */
+.action.danger,
+.danger{
+  background:linear-gradient(135deg,#9f2222,#e44747) !important;
+  color:#fff !important;
+  border:1px solid #9f2222 !important;
+}
+.action.success,
+.success{
+  background:linear-gradient(135deg,#116b42,#198754) !important;
+  color:#fff !important;
+  border:1px solid #116b42 !important;
+}
+.action.danger:hover,
+.danger:hover,
+.action.success:hover,
+.success:hover{
+  transform:translateY(-2px);
+  filter:brightness(1.08);
+  box-shadow:0 9px 20px rgba(8,40,79,.20);
+}
+
+/* Sidebar controls: no pale-blue hover */
+.sidebar button{
+  border:1px solid transparent;
+  transition:.22s ease;
+}
+.sidebar button:hover,
+.sidebar button.active{
+  background:linear-gradient(90deg,#0d3f78,#155bb2) !important;
+  color:#fff !important;
+  border-color:#2469c2;
+  box-shadow:inset 3px 0 #fff,0 5px 14px rgba(8,40,79,.18);
+  transform:translateX(2px);
+}
+
+/* Quick dashboard action tiles */
+.quick-grid button{
+  background:#fff !important;
+  color:#173a61;
+  border:1px solid #b8cee3 !important;
+}
+.quick-grid button:hover{
+  background:#08284f !important;
+  color:#fff !important;
+  border-color:#08284f !important;
+  transform:translateY(-3px);
+  box-shadow:0 10px 22px rgba(8,40,79,.20);
+}
+.quick-grid button:hover strong,
+.quick-grid button:hover small{
+  color:#fff !important;
+}
+
+/* Login role tabs */
+.role-tabs button{
+  background:#fff !important;
+  color:#08284f !important;
+  border:1px solid #b8cee3 !important;
+}
+.role-tabs button:hover{
+  background:#0d3f78 !important;
+  color:#fff !important;
+  border-color:#0d3f78 !important;
+  transform:translateY(-1px);
+}
+.role-tabs button.active{
+  background:linear-gradient(135deg,#08284f,#155bb2) !important;
+  color:#fff !important;
+  border-color:#08284f !important;
+}
+
+/* Remove pale-blue appearance from form focus states */
+input:focus,
+select:focus,
+textarea:focus{
+  outline:none;
+  border-color:#155bb2 !important;
+  box-shadow:0 0 0 3px rgba(21,91,178,.12);
+  background:#fff !important;
+}
+
+/* Links styled as buttons */
+a.btn,
+a.action,
+a.login-button{
+  text-decoration:none !important;
+}
+
+/* Disabled state */
+button:disabled,
+.btn:disabled,
+.action:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  transform:none !important;
+  box-shadow:none !important;
+}
+
+/* Mobile: comfortable touch targets */
+@media(max-width:600px){
+  button,
+  .btn,
+  .action,
+  .login-button,
+  .login-submit,
+  .primary-action,
+  .ghost-action{
+    min-height:42px;
+  }
+}
