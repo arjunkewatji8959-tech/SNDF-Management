@@ -452,3 +452,328 @@ button.action:hover {
     color:#24577f !important;
   }
 }
+
+/* =====================================================
+   SNDF PREMIUM COLOR BALANCE | FINAL VISUAL POLISH
+   Palette: Soft Navy + Muted Blue + Ice Blue + White
+   Goal: professional, calm, readable — no heavy blue blocks.
+   ===================================================== */
+:root{
+  --navy:#183b56;
+  --blue:#4f7f9f;
+  --sky:#f3f8fc;
+  --line:#d8e5ee;
+  --ink:#203447;
+  --muted:#6f8090;
+  --white:#ffffff;
+  --soft-blue:#cfe9f8;
+  --soft-blue-hover:#b9def1;
+  --soft-blue-border:#a9d2e8;
+  --soft-blue-text:#234e68;
+  --shadow:0 10px 28px rgba(24,59,86,.10);
+}
+
+/* Main dashboard background: light and clean */
+body{background:#f3f7fa;color:var(--ink)}
+.dash-main{background:#f3f7fa}
+
+/* Header: muted navy instead of strong royal blue */
+.appbar{
+  background:linear-gradient(90deg,#183b56,#2f6685) !important;
+}
+
+/* Sidebar: slightly lighter, less saturated blue */
+.sidebar{
+  background:linear-gradient(180deg,#214d69,#183b56) !important;
+}
+.sidebar button,
+.sidebar a{
+  background:transparent !important;
+  color:#eaf3f8 !important;
+  border:1px solid transparent !important;
+}
+.sidebar button:hover,
+.sidebar button.active,
+.sidebar a:hover,
+.sidebar a.active{
+  background:#3f7899 !important;
+  color:#fff !important;
+  border-color:#5f91ad !important;
+}
+
+/* All normal/action buttons: soft ice-blue */
+button,
+.btn,
+.action,
+.nav-btn,
+.download-btn,
+.payment-done,
+.location-management-btn,
+input[type="button"],
+input[type="submit"]{
+  background:var(--soft-blue) !important;
+  color:var(--soft-blue-text) !important;
+  border:1px solid var(--soft-blue-border) !important;
+  box-shadow:0 2px 7px rgba(35,78,104,.08) !important;
+  font-weight:700;
+}
+
+button:hover,
+.btn:hover,
+.action:hover,
+.nav-btn:hover,
+.download-btn:hover,
+.payment-done:hover,
+.location-management-btn:hover,
+input[type="button"]:hover,
+input[type="submit"]:hover{
+  background:var(--soft-blue-hover) !important;
+  color:#183f57 !important;
+  border-color:#91c5df !important;
+}
+
+/* Keep danger/success functions visually calm; text still communicates meaning */
+.action.danger,
+button.danger,
+.btn-danger,
+.action.success,
+button.success,
+.btn-success{
+  background:#cfe9f8 !important;
+  color:#234e68 !important;
+  border-color:#a9d2e8 !important;
+}
+
+/* Public website primary buttons use a muted blue */
+.btn-primary{
+  background:#6f9fbc !important;
+  color:#fff !important;
+  border-color:#628fa9 !important;
+}
+.btn-primary:hover{
+  background:#5f8fae !important;
+}
+
+/* Outline buttons stay almost white */
+.btn-outline,
+.outline{
+  background:#f7fbfe !important;
+  color:#365b72 !important;
+  border-color:#b9d3e3 !important;
+}
+.btn-outline:hover,
+.outline:hover{
+  background:#eaf5fb !important;
+}
+
+/* Dashboard panels: white cards on a soft gray-blue background */
+.panel,
+.stat,
+.premium-card,
+.premium-panel,
+.account-card,
+.notice-item{
+  background:#fff;
+  border-color:#d8e5ee;
+  box-shadow:0 6px 20px rgba(24,59,86,.07);
+}
+
+/* Premium dashboard's internal buttons follow the same palette */
+.premium-overview button,
+.premium-overview .action,
+.panel button,
+.view button.action{
+  background:#cfe9f8 !important;
+  color:#234e68 !important;
+  border-color:#a9d2e8 !important;
+}
+.premium-overview button:hover,
+.premium-overview .action:hover,
+.panel button:hover,
+.view button.action:hover{
+  background:#b9def1 !important;
+}
+
+/* Top logout button: same family, not a bright blue block */
+.top-logout{
+  background:#cfe9f8 !important;
+  color:#234e68 !important;
+  border-color:#a9d2e8 !important;
+}
+.top-logout:hover{background:#b9def1 !important}
+
+/* Form fields: clean white/near-white */
+input,select,textarea{
+  background:#fbfdff;
+  border-color:#cbdce8;
+  color:#203447;
+}
+input:focus,select:focus,textarea:focus{
+  border-color:#8dbbd2;
+  outline:none;
+  box-shadow:0 0 0 3px rgba(141,187,210,.16);
+}
+
+/* Softer dashboard hero / preview areas */
+.dash-hero,
+.dashboard-preview{
+  background:linear-gradient(135deg,#eaf4fa,#ffffff) !important;
+  border-color:#d3e3ed !important;
+}
+
+/* Reduce heavy blue on public service cards/links */
+.service-card h3,
+.service-card a,
+.section-heading>span,
+.eyebrow.dark{
+  color:#4d7894 !important;
+}
+
+/* Mobile keeps the same balanced palette */
+@media(max-width:850px){
+  .sidebar button,
+  .sidebar a{
+    background:#edf6fb !important;
+    color:#315b73 !important;
+    border-color:#d5e6f0 !important;
+  }
+  .sidebar button:hover,
+  .sidebar button.active,
+  .sidebar a:hover,
+  .sidebar a.active{
+    background:#cfe9f8 !important;
+    color:#234e68 !important;
+    border-color:#a9d2e8 !important;
+  }
+  button,.btn,.action,.nav-btn,.download-btn,.payment-done,.location-management-btn{
+    background:#d8edf8 !important;
+    color:#234e68 !important;
+  }
+}
+
+/* =====================================================
+   SNDF PROFESSIONAL UI THEME | FINAL
+   Premium Dashboard typography + balanced corporate colors
+   ===================================================== */
+:root{
+  --sndf-navy:#183B56;
+  --sndf-navy-2:#234E68;
+  --sndf-blue:#4F8FB5;
+  --sndf-blue-soft:#DCEFF8;
+  --sndf-blue-pale:#EEF7FB;
+  --sndf-border:#D6E4EC;
+  --sndf-bg:#F4F8FB;
+  --sndf-text:#1F3342;
+  --sndf-muted:#667B89;
+}
+
+body{
+  background:var(--sndf-bg);
+  color:var(--sndf-text);
+}
+
+/* Premium Dashboard: clean professional typography, no decorative/heavy font */
+.premium-overview,
+.premium-overview *{
+  font-family:Inter,"Segoe UI",Roboto,Arial,sans-serif;
+}
+.premium-overview-head h2{
+  margin:4px 0 0;
+  font-family:Inter,"Segoe UI",Roboto,Arial,sans-serif !important;
+  font-size:clamp(20px,2vw,28px) !important;
+  line-height:1.2;
+  font-weight:650 !important;
+  letter-spacing:-.02em !important;
+  color:var(--sndf-navy) !important;
+  text-transform:none !important;
+  text-shadow:none !important;
+}
+.premium-overview-head .eyebrow{
+  font-family:Inter,"Segoe UI",Roboto,Arial,sans-serif !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+  letter-spacing:.09em !important;
+  color:#6C8EA2 !important;
+}
+.premium-overview .live-badge{
+  background:var(--sndf-blue-pale) !important;
+  color:#3C718F !important;
+  border:1px solid #C7E1ED !important;
+  box-shadow:none !important;
+}
+.premium-card,
+.premium-panel{
+  border:1px solid var(--sndf-border) !important;
+  background:#fff !important;
+  box-shadow:0 5px 18px rgba(24,59,86,.06) !important;
+}
+.premium-card strong{
+  color:var(--sndf-navy) !important;
+  font-weight:700 !important;
+}
+.premium-card small,.premium-panel small{
+  color:var(--sndf-muted) !important;
+}
+
+/* Only Home can ever display the Premium Dashboard */
+.view:not(#home) .premium-overview{
+  display:none !important;
+  visibility:hidden !important;
+  pointer-events:none !important;
+}
+
+/* Professional, low-saturation blue buttons throughout the application */
+button,.btn,.action,.nav-btn,.download-btn,.payment-done,.location-management-btn,
+.top-logout,.premium-overview button,.premium-overview .action,.panel button,.view button.action{
+  background:#DCEFF8 !important;
+  color:#234E68 !important;
+  border:1px solid #BFDCEB !important;
+  box-shadow:none !important;
+}
+button:hover,.btn:hover,.action:hover,.nav-btn:hover,.download-btn:hover,.payment-done:hover,
+.location-management-btn:hover,.top-logout:hover,.premium-overview button:hover,
+.premium-overview .action:hover,.panel button:hover,.view button.action:hover{
+  background:#C9E5F2 !important;
+  color:#183B56 !important;
+  border-color:#A8CEE1 !important;
+}
+
+/* Sidebar uses deeper blue only as navigation contrast */
+.sidebar{background:#234E68 !important;}
+.sidebar button,.sidebar a{
+  background:transparent !important;
+  color:#EAF5FA !important;
+  border-color:transparent !important;
+}
+.sidebar button:hover,.sidebar button.active,.sidebar a:hover,.sidebar a.active{
+  background:#356D8D !important;
+  color:#fff !important;
+}
+
+/* Main application header: navy, but not overly saturated */
+.app-header,.topbar,.dashboard-header{
+  background:#183B56 !important;
+}
+
+/* Clean form and page surfaces */
+input,select,textarea{
+  background:#fff !important;
+  border-color:#C9DCE6 !important;
+  color:#1F3342 !important;
+}
+input:focus,select:focus,textarea:focus{
+  border-color:#8FBED3 !important;
+  box-shadow:0 0 0 3px rgba(143,190,211,.16) !important;
+}
+
+/* Keep status colors reserved for real status meaning */
+.status-present,.status-on-duty{color:#287A55 !important;}
+.status-absent{color:#B34B4B !important;}
+.status-pending{color:#A16B2B !important;}
+
+@media(max-width:850px){
+  button,.btn,.action,.nav-btn,.download-btn,.payment-done,.location-management-btn{
+    min-height:40px;
+  }
+}
+

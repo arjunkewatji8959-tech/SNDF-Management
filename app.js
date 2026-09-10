@@ -9,6 +9,7 @@ if(!user||!role||!(user.role===role || (role==='admin'&&user.role==='master_admi
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 function label(r){return {master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r}
 const isAdminRole=['admin','master_admin'].includes(role);
+const PREMIUM_ROLES=['master_admin','admin','field_officer'];
 function renderTopProfile(u=user){const r=u?.role||role;$$('.app-user').forEach(x=>{const dp=u?.dp||'assets-logo.png';x.innerHTML=`<img class="app-avatar" src="${escape(dp)}" alt="Profile"><div class="app-user-text"><b>${escape(u?.name||'')}</b><small>${escape(u?.staff_id||'')} • ${label(r)}</small></div>`});['welcomeName','welcomeProfileName'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.name||label(r)});['welcomeId','welcomeProfileId'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=u?.staff_id||''});['welcomeRole','welcomeProfileRole'].forEach(id=>{const x=$('#'+id);if(x)x.textContent=label(r)});const wd=$('#welcomeDp');if(wd)wd.src=u?.dp||'assets-logo.png';const pd=$('#p_dp_preview');if(pd)pd.src=u?.dp||'assets-logo.png';const pt=$('#p_profile_title');if(pt)pt.textContent=(u?.name||'Admin')+' Profile';}
 
 /* =====================================================
@@ -24,8 +25,11 @@ function showView(viewId){
   if(target) target.classList.remove('hidden');
 
   // Extra safety: never show the Premium Dashboard outside Home.
+  // HARD HOME-ONLY RULE: Premium Dashboard can never be visible outside #home.
   $$('.premium-overview').forEach(dashboard=>{
-    dashboard.classList.toggle('hidden', viewId!=='home');
+    const insideHome = !!dashboard.closest('#home');
+    const allowed = PREMIUM_ROLES.includes(role);
+    dashboard.classList.toggle('hidden', !(viewId==='home' && insideHome && allowed));
   });
 
   // Highlight only the currently selected navigation button.
@@ -50,7 +54,6 @@ renderTopProfile();
    Allowed roles: Master Admin, Admin, Field Officer.
    The dashboard is removed from the DOM for all other roles.
    ===================================================== */
-const PREMIUM_ROLES=['master_admin','admin','field_officer'];
 if(!PREMIUM_ROLES.includes(role)){
   $$('.premium-overview').forEach(x=>x.remove());
 }
