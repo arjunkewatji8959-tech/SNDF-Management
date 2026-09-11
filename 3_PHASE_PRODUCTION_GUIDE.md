@@ -5,6 +5,7 @@
 - audit logs
 - role-based staff structure
 - configurable GPS geofence
+- LOC-01 / LOC-02 / LOC-03 support
 
 ## Phase 2 — Attendance + Payroll
 - camera + captured photo

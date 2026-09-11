@@ -10,7 +10,7 @@ const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 // =====================================================
 // SECTION: FUNCTION label
 // =====================================================
-function label(r){return {master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r}
+function label(r){return {master_admin:'Director',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r}
 // END SECTION: FUNCTION label
 
 const isAdminRole=['admin','master_admin'].includes(role);
@@ -41,11 +41,11 @@ const createRoleSelect=$('form[data-type="staff"] select[name="role"]');
 
 // =====================================================
 // SECTION: STAFF CREATION UI HIERARCHY
-// Master Admin -> Admin -> Field Officer -> Supervisor -> Guard
+// Director -> Admin -> Field Officer -> Supervisor -> Guard
 // =====================================================
 if(createRoleSelect){
-  // Only Master Admin and Admin can create members.
-  // Master Admin can create Admin/Field Officer/Supervisor/Guard.
+  // Only Director and Admin can create members.
+  // Director can create Admin/Field Officer/Supervisor/Guard.
   // Admin can create Field Officer/Supervisor/Guard.
   const allowedByRole={
     master_admin:['admin','field_officer','officer','supervisor','guard'],
@@ -319,7 +319,7 @@ function renderDaily(rows){
 // SECTION: FUNCTION renderStaff
 // =====================================================
 function renderStaff(list){
- const groups={field_officer:'#fieldOfficerRows',officer:'#officerRows',supervisor:'#supervisorRows',guard:'#guardRows'};
+ const groups={admin:'#adminRows',field_officer:'#fieldOfficerRows',officer:'#officerRows',supervisor:'#supervisorRows',guard:'#guardRows'};
  Object.entries(groups).forEach(([r,sel])=>{const b=$(sel);if(!b)return;let rows=list.filter(x=>x.role===r);if(!isAdminRole)rows=rows.filter(x=>x.staff_id===user.staff_id);b.innerHTML=rows.map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.post||label(x.role))}</td><td>${escape(x.department||'')}</td><td>₹${Number(x.salary||0)}</td><td>${escape(x.status||'active')}</td><td>${isAdminRole?`<button class="action danger" onclick="removeStaff(${x.id})">Delete</button>`:'View Only'}</td></tr>`).join('')||'<tr><td colspan="7">No members found.</td></tr>';});
  const legacy=$('#staffRows');if(legacy)legacy.innerHTML='';
 }
@@ -361,7 +361,7 @@ function fillCreateParent(list){
 
   if(roleVal==='admin' && isMaster){
     parents=list.filter(s=>s.role==='master_admin' && s.status==='active');
-    if(!parents.length) parents=[{staff_id:'adi123',name:'SNDF Master Admin',role:'master_admin',status:'active'}];
+    if(!parents.length) parents=[{staff_id:'adi123',name:'SNDF Director',role:'master_admin',status:'active'}];
   }else if(['field_officer','officer'].includes(roleVal)){
     parents=isNormalAdmin ? [user] : list.filter(s=>s.role==='admin'&&s.status==='active');
   }else if(roleVal==='supervisor'){
@@ -370,7 +370,7 @@ function fillCreateParent(list){
     parents=list.filter(s=>s.role==='supervisor'&&s.status==='active'&&selectedLocation&&String(s.location_code||'')===selectedLocation);
   }
 
-  const labelText=roleVal==='admin'?'Select Master Admin Parent ID':
+  const labelText=roleVal==='admin'?'Select Director Parent ID':
     roleVal==='supervisor'?'Select Field Officer Parent ID':
     roleVal==='guard'?'Select Supervisor Parent ID':
     ['field_officer','officer'].includes(roleVal)?'Select Admin Parent ID':'Select Parent ID';
@@ -396,7 +396,7 @@ function fillCreateParent(list){
       : 'No valid parent found. Create/assign the required parent first.';
 
   const hints={
-    admin:'Admin → Parent is Master Admin. Master Admin creates Admin accounts.',
+    admin:'Admin → Parent is Director. Director creates Admin accounts.',
     field_officer:'Field Officer → Parent must be an active Admin; multiple locations allowed.',
     officer:'Officer → Parent must be an active Admin; one location only.',
     supervisor:'Supervisor → Parent must be a Field Officer assigned to the selected location.',
@@ -715,10 +715,8 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       delete d.reason_select; delete d.reason_custom;
     }
     if(form.dataset.type==='staff'){
-      // Only Admin and Master Admin can create operational members.
-      if(!['admin','master_admin'].includes(user?.role)) throw Error('Only Admin or Master Admin can create members');
-      // Admin accounts are intentionally removed from this Create Member UI.
-      if(String(d.role||'')==='admin') throw Error('Admin creation is disabled here.');
+      // Only Admin and Director can create operational members.
+      if(!['admin','master_admin'].includes(user?.role)) throw Error('Only Admin or Director can create members');
 
       const locationSelect=$('#createLocation');
       const selectedLocations=locationSelect ? [...locationSelect.selectedOptions].map(o=>String(o.value||'').trim()).filter(Boolean) : [];
@@ -849,7 +847,7 @@ $('#attendanceRoleFilter')?.addEventListener('change',()=>renderAttendance(windo
 $('#accountRoleFilter')?.addEventListener('change',()=>loadPayroll());
 $('#memberRoleFilter')?.addEventListener('change',()=>filterMemberLists());$('#createRole')?.addEventListener('change',()=>{ if(!isAdminRole)return; fillCreateParent(staff); });
 if(user?.role!=='master_admin'){ $('#createRole')?.querySelector('.master-only-option')?.remove();  }
-if(user?.role==='master_admin'){ const x=$('#dashboardRoleLabel'); if(x)x.textContent='SNDF MASTER ADMIN'; const note=document.querySelector('#staff .muted-note'); if(note)note.textContent='Master Admin can create Admin, Field Officer, Supervisor and Guard. Normal Admin cannot create another Admin.'; }
+if(user?.role==='master_admin'){ const x=$('#dashboardRoleLabel'); if(x)x.textContent='SNDF DIRECTOR'; const note=document.querySelector('#staff .muted-note'); if(note)note.textContent='Director can create Admin, Field Officer, Officer, Supervisor and Guard. Normal Admin cannot create another Admin.'; }
 
 // =====================================================
 
@@ -863,7 +861,7 @@ function filterMemberLists(){
   document.querySelectorAll('[data-role-list]').forEach(panel=>{
     const panelRole=panel.dataset.roleList;
     const isAdminPanel=panelRole==='admin';
-    // Admin list is visible only to Master Admin, but it also follows the role filter.
+    // Admin list is visible only to Director, but it also follows the role filter.
     const allowed=(!isAdminPanel || master) && (selected==='all' || panelRole===selected);
     panel.classList.toggle('hidden',!allowed);
   });

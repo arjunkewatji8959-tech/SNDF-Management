@@ -383,12 +383,12 @@
 
         <!-- =====================================================
              LOCATION ASSIGNMENT / OWNERSHIP
-             Master Admin: assign locations to Admin/Field Officer.
+             Director: assign locations to Admin/Field Officer.
              Admin: assign its own points to Field Officers.
         ===================================================== -->
         <section class="card" id="assignmentCard">
           <h2>👥 Location Distribution</h2>
-          <p class="muted">Ek Field Officer ko multiple locations de sakte hain. Example: 10 points → FO-01 ko 5, FO-02 ko 5. Admin ko bhi Master Admin multiple locations assign kar sakta hai.</p>
+          <p class="muted">Ek Field Officer ko multiple locations de sakte hain. Example: 10 points → FO-01 ko 5, FO-02 ko 5. Admin ko bhi Director multiple locations assign kar sakta hai.</p>
           <div class="grid">
             <div class="field">
               <label>Member</label>
@@ -651,7 +651,7 @@
             apiJson('/api/location-ownership', { headers })
           ]);
 
-          // Master Admin can distribute locations to Admin/Field Officer.
+          // Director can distribute locations to Admin/Field Officer.
           // Admin can distribute only to Field Officers.
           const allowedStaff = (staff || []).filter(member => {
             if (member.status !== 'active') return false;

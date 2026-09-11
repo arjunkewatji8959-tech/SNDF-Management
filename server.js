@@ -34,7 +34,7 @@ app.use(express.json({limit:'12mb'}));
 app.use(express.urlencoded({extended:true}));
 app.use(express.static(frontendPath));
 
-// Hold API requests until SQLite schema + Master Admin bootstrap are complete.
+// Hold API requests until SQLite schema + Director bootstrap are complete.
 // This prevents early Railway/Hostinger requests from seeing temporary "no such table/column" errors.
 app.use('/api', (req,res,next)=>{
   if (req.path === '/deployment' || req.path === '/health' || dbReady) return next();
@@ -226,26 +226,26 @@ db.serialize(()=>{
     WHERE role IN ('admin','field_officer') AND TRIM(COALESCE(location_code,''))<>''`);
 
 
-  // MASTER ADMIN bootstrap:
+  // DIRECTOR bootstrap:
   // Keep one fixed top-level account and never delete/overwrite other staff records.
   // Using a synchronous bcrypt hash here keeps the final database-ready signal ordered.
   const masterPasswordHash = bcrypt.hashSync('sndf1234', 12);
   db.run(
     `INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,department,status)
-     VALUES('master_admin','SNDF Master Admin','adi123',?,'Master Admin',0,'','','Management','active')
+     VALUES('master_admin','SNDF Director','adi123',?,'Director',0,'','','Management','active')
      ON CONFLICT(staff_id) DO NOTHING`,
     [masterPasswordHash],
     (masterErr) => {
       if (masterErr) {
-        console.error('Master Admin bootstrap failed:', masterErr.message);
+        console.error('Director bootstrap failed:', masterErr.message);
         return;
       }
-      console.log('Master Admin ready: adi123');
+      console.log('Director ready: adi123');
       dbReady = true;
     }
   );
 
-  // Production database intentionally starts with Master Admin only when no other
+  // Production database intentionally starts with Director only when no other
   // records exist. Existing production records are never cleared by this startup code.
 
 });
@@ -494,7 +494,7 @@ app.get('/api/profile-update-sheet',auth,roles('admin','master_admin'),(req,res)
 
 // =====================================================
 // SECTION: STAFF CREATION + HIERARCHY
-// Master Admin -> Admin -> Field Officer -> Supervisor -> Guard
+// Director -> Admin -> Field Officer -> Supervisor -> Guard
 // =====================================================
 app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   const x=req.body||{};
@@ -524,11 +524,11 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   if(!/^\d{4}-\d{2}-\d{2}$/.test(dob))return res.status(400).json({error:'Date of Birth must be in YYYY-MM-DD format'});
   if(!/^\+?[0-9\s()-]{10,20}$/.test(contact))return res.status(400).json({error:'Enter a valid phone number'});
 
-  // Strict hierarchy: Master Admin -> Admin -> Field Officer/Officer -> Supervisor -> Guard.
-  // Master Admin may create every role, but every created member still gets a real parent.
+  // Strict hierarchy: Director -> Admin -> Field Officer/Officer -> Supervisor -> Guard.
+  // Director may create every role, but every created member still gets a real parent.
   if(role==='admin'){
-    if(!masterCreating)return res.status(403).json({error:'Only Master Admin can create Admin'});
-    if(parent && parent!=='adi123')return res.status(400).json({error:'Admin Parent ID must be Master Admin ID adi123'});
+    if(!masterCreating)return res.status(403).json({error:'Only Director can create Admin'});
+    if(parent && parent!=='adi123')return res.status(400).json({error:'Admin Parent ID must be Director ID adi123'});
   }else{
     if(!parent)return res.status(400).json({error:`Parent ID is required for ${role}`});
   }
@@ -539,7 +539,7 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   if(['officer','supervisor','guard'].includes(role) && requestedLocations.length!==1)
     return res.status(400).json({error:`${role} can use only one Location Code`});
 
-  if(adminCreating && role==='admin')return res.status(403).json({error:'Only Master Admin can create Admin'});
+  if(adminCreating && role==='admin')return res.status(403).json({error:'Only Director can create Admin'});
 
   get('SELECT id,role,name,staff_id,status FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
     if(duplicateErr)return res.status(500).json({error:duplicateErr.message});
@@ -577,7 +577,7 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
     const validateParent=next=>{
       if(role==='admin')return get("SELECT staff_id,role,status FROM staff WHERE staff_id='adi123' LIMIT 1",[],(e,p)=>{
         if(e)return res.status(500).json({error:e.message});
-        if(!p||p.role!=='master_admin'||p.status!=='active')return res.status(400).json({error:'Master Admin parent is not available'});
+        if(!p||p.role!=='master_admin'||p.status!=='active')return res.status(400).json({error:'Director parent is not available'});
         next();
       });
       get('SELECT id,role,status,staff_id,location_code FROM staff WHERE staff_id=?',[parent],(e,p)=>{
@@ -635,9 +635,9 @@ app.delete('/api/staff/:id',auth,roles('admin','master_admin'),(req,res)=>{
   get('SELECT id,role,staff_id,name,location_code FROM staff WHERE id=?',[req.params.id],(err,target)=>{
     if(err)return res.status(500).json({error:err.message});
     if(!target)return res.status(404).json({error:'Staff not found'});
-    if(target.role==='master_admin')return res.status(403).json({error:'Master Admin cannot be deleted'});
+    if(target.role==='master_admin')return res.status(403).json({error:'Director cannot be deleted'});
     if(req.user.role==='admin' && target.role==='admin')
-      return res.status(403).json({error:'Only Master Admin can delete Admin accounts'});
+      return res.status(403).json({error:'Only Director can delete Admin accounts'});
     const remove=()=>db.serialize(()=>{
       db.run('DELETE FROM location_assignments WHERE staff_id=?',[target.staff_id]);
       db.run('DELETE FROM shift_schedules WHERE staff_id=?',[target.staff_id]);
@@ -666,11 +666,11 @@ app.put('/api/staff/:id/profile',auth,roles('admin','master_admin'),(req,res)=>{
   get('SELECT * FROM staff WHERE id=?',[req.params.id],(err,s)=>{
     if(err)return res.status(500).json({error:err.message});
     if(!s)return res.status(404).json({error:'Staff not found'});
-    if(s.role==='master_admin')return res.status(403).json({error:'Master Admin profile is protected'});
+    if(s.role==='master_admin')return res.status(403).json({error:'Director profile is protected'});
     const newRole=['admin','field_officer','officer','supervisor','guard'].includes(x.role)?x.role:s.role;
-    // Normal Admin cannot edit another Admin, create/elevate to Admin, or touch Master Admin.
+    // Normal Admin cannot edit another Admin, create/elevate to Admin, or touch Director.
     if(req.user.role==='admin' && (s.role==='admin' || s.role==='master_admin' || newRole==='admin')){
-      return res.status(403).json({error:'Only Master Admin can manage Admin accounts'});
+      return res.status(403).json({error:'Only Director can manage Admin accounts'});
     }
     const location=String(x.location_code||'').trim();
     const parent=String(x.parent_id||'').trim();
@@ -919,7 +919,7 @@ app.get('/api/team-attendance',auth,roles('field_officer','officer','supervisor'
 
 // =====================================================
 // TASK MANAGEMENT - role hierarchy
-// Master Admin -> Admin/Field Officer/Officer/Supervisor/Guard
+// Director -> Admin/Field Officer/Officer/Supervisor/Guard
 // Admin -> Field Officer/Officer/Supervisor/Guard
 // Field Officer -> Officer
 // Officer -> Supervisor; Supervisor -> Guard
@@ -984,7 +984,7 @@ app.post('/api/tasks',auth,(req,res)=>{
 // =====================================================
 // SECTION: FUNCTION labelRole
 // =====================================================
-function labelRole(r){return ({master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r)}
+function labelRole(r){return ({master_admin:'Director',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r)}
 // END SECTION: FUNCTION labelRole
 
 // =====================================================
@@ -1074,7 +1074,7 @@ app.get('/api/suspension-notifications',auth,roles('admin','master_admin'),(req,
 // =====================================================
 // HOURLY POINT UPDATE
 // Guard + Supervisor must submit a live photo + GPS once every hour during Night Shift.
-// Day Shift is not mandatory. Admin/Master Admin can monitor all submitted points.
+// Day Shift is not mandatory. Admin/Director can monitor all submitted points.
 // =====================================================
 // =====================================================
 // SECTION: FUNCTION pointShiftFromAttendance
@@ -1135,7 +1135,7 @@ app.get('/api/point-updates',auth,roles('admin','master_admin'),(req,res)=>{
   all(sql,params,res);
 });
 
-// Profile viewer for Admin/Master Admin. Read-only; no edit action is exposed.
+// Profile viewer for Admin/Director. Read-only; no edit action is exposed.
 app.get('/api/staff/:id/profile-view',auth,roles('admin','master_admin'),(req,res)=>{
   get(`SELECT id,role,name,staff_id,post,salary,location_code,parent_id,status,suspended_until,suspension_reason,dob,department,contact_number,dp,
       age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,driving_license,
@@ -1146,7 +1146,7 @@ app.get('/api/staff/:id/profile-view',auth,roles('admin','master_admin'),(req,re
 });
 
 
-// PROFILE PDF DOWNLOAD - Admin/Master Admin only.
+// PROFILE PDF DOWNLOAD - Admin/Director only.
 // Generates a real PDF and embeds all four full-body photos stored as data URLs.
 // =====================================================
 // SECTION: FUNCTION profileImageBuffer
@@ -1183,7 +1183,7 @@ app.get('/api/staff/:id/profile-pdf',auth,roles('admin','master_admin'),(req,res
     if(e)return res.status(500).json({error:e.message});
     if(!p)return res.status(404).json({error:'Profile not found'});
 
-    const roleLabel={master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',supervisor:'Supervisor',guard:'Guard'}[p.role]||p.role;
+    const roleLabel={master_admin:'Director',admin:'Admin',field_officer:'Field Officer',supervisor:'Supervisor',guard:'Guard'}[p.role]||p.role;
     const doc=new PDFDocument({size:'A4',margin:42,info:{Title:`SNDF Profile - ${p.name}`,Author:'SNDF Management'}});
     const chunks=[];
     doc.on('data',c=>chunks.push(c));
@@ -1335,7 +1335,7 @@ app.post('/api/attendance',auth,(req,res)=>{
 });
 // =====================================================
 // SECTION: ADMIN MARK PRESENT BY STAFF ID
-// Admin/Master Admin can manually mark a staff member Present using Staff ID.
+// Admin/Director can manually mark a staff member Present using Staff ID.
 // This creates a completed attendance record without requiring a camera photo.
 // =====================================================
 app.post('/api/attendance/admin-mark-present',auth,roles('admin','master_admin'),(req,res)=>{
@@ -1540,7 +1540,7 @@ app.put('/api/point-transfers/:id/approve',auth,roles('admin','master_admin'),(r
     });
   });
 });
-// DIRECT POINT TRANSFER - Admin/Master Admin can change any non-admin staff point by Staff ID without a request.
+// DIRECT POINT TRANSFER - Admin/Director can change any non-admin staff point by Staff ID without a request.
 app.put('/api/point-transfers/direct',auth,roles('admin','master_admin'),(req,res)=>{
   const staffId=String(req.body?.staff_id||'').trim();
   const to=String(req.body?.to_location||'').trim();
@@ -1549,7 +1549,7 @@ app.put('/api/point-transfers/direct',auth,roles('admin','master_admin'),(req,re
   get('SELECT * FROM staff WHERE staff_id=?',[staffId],(e,s)=>{
     if(e)return res.status(500).json({error:e.message});
     if(!s)return res.status(404).json({error:'Staff ID not found'});
-    if(['master_admin','admin'].includes(s.role))return res.status(403).json({error:'Admin/Master Admin point cannot be changed from Point Transfer'});
+    if(['master_admin','admin'].includes(s.role))return res.status(403).json({error:'Admin/Director point cannot be changed from Point Transfer'});
     get('SELECT code FROM locations WHERE code=? AND active=1',[to],(le,loc)=>{
       if(le)return res.status(500).json({error:le.message});
       if(!loc)return res.status(400).json({error:'Invalid or inactive Location Code'});
@@ -1575,7 +1575,7 @@ app.put('/api/point-transfers/:id/reject',auth,roles('admin','master_admin'),(re
   });
 });
 
-// RELIEVER NOTIFICATIONS - Staff receive a notification whenever Admin/Master Admin assigns reliever duty.
+// RELIEVER NOTIFICATIONS - Staff receive a notification whenever Admin/Director assigns reliever duty.
 app.get('/api/reliever-notifications',auth,(req,res)=>all('SELECT * FROM reliever_notifications WHERE staff_id=? ORDER BY id DESC LIMIT 50',[req.user.staff_id],res));
 app.put('/api/reliever-notifications/:id/read',auth,(req,res)=>run('UPDATE reliever_notifications SET read_at=? WHERE id=? AND staff_id=?',[new Date().toISOString(),req.params.id,req.user.staff_id],res,()=>res.json({message:'Notification marked as read'})));
 
@@ -1745,7 +1745,7 @@ db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assign
 
 // =====================================================
 // SECTION: LOCATION SCOPE HELPERS
-// Master Admin sees all locations. Admin/Field Officer see only locations assigned to them.
+// Director sees all locations. Admin/Field Officer see only locations assigned to them.
 // Supervisor/Guard see only their current location.
 // =====================================================
 function assignedLocations(staffId, cb){
@@ -1775,7 +1775,7 @@ app.get('/api/locations', auth, (req, res) => {
   res.json([]);
 });
 
-// LOCATION ASSIGNMENTS - only Master Admin/Admin can distribute points.
+// LOCATION ASSIGNMENTS - only Director/Admin can distribute points.
 app.get('/api/location-assignments', auth, roles('admin','master_admin'), (req,res)=>{
   const target=String(req.query.staff_id||'').trim();
   const sql=`SELECT la.id,la.staff_id,la.location_code,la.assigned_by,la.assigned_at,la.active,l.name,l.address,l.duty_shift,l.duty_hours
@@ -1825,7 +1825,7 @@ app.post('/api/location-assignments', auth, roles('admin','master_admin'), (req,
 
 // =====================================================
 // SHIFT SCHEDULE MANAGEMENT
-// Admin/Master Admin select Staff ID + Location + 8/12 hour shift.
+// Admin/Director select Staff ID + Location + 8/12 hour shift.
 // =====================================================
 db.run(`CREATE TABLE IF NOT EXISTS shift_schedules (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
