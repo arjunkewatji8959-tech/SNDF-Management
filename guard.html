@@ -382,8 +382,27 @@
           </h2>
           <div class="panel fine-form">
             <form data-type="fine" class="grid-form">
-              <select id="fineTarget" name="target_id" required>
-              </select>
+              <!-- =====================================================
+                   SECTION: FINE EVIDENCE CAMERA
+                   Live camera photo is saved with the fine record.
+                   ===================================================== -->
+              <div class="fine-camera-box" data-fine-camera>
+                <div class="fine-camera-live">
+                  <video id="fineCamera" autoplay playsinline muted></video>
+                  <button type="button" id="fineCapture" class="action primary-action">📷 Capture Fine Image</button>
+                </div>
+                <div class="fine-camera-preview">
+                  <img id="fineCaptured" alt="Fine evidence preview">
+                  <button type="button" id="fineRetake" class="action">↻ Retake</button>
+                </div>
+                <input type="hidden" id="fineImage" name="image" value="">
+              </div>
+              <!-- END SECTION: FINE EVIDENCE CAMERA -->
+
+              <label>Target Staff ID
+                <input id="fineTarget" name="target_id" list="fineTargetList" placeholder="Enter Staff ID" required autocomplete="off">
+              </label>
+              <datalist id="fineTargetList"></datalist>
               <input name="reason" placeholder="Fine reason" required>
               <input name="amount" type="number" min="1" placeholder="Fine amount" required>
               <button class="action danger">
@@ -414,7 +433,7 @@
                   <th>
                     Date
                   </th>
-                </tr>
+                <th>Photo</th></tr>
               </thead>
               <tbody id="fineRows">
               </tbody>

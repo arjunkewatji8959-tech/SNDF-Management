@@ -98,8 +98,9 @@ db.serialize(()=>{
 
   db.run(`CREATE TABLE IF NOT EXISTS fines (
     id INTEGER PRIMARY KEY AUTOINCREMENT, guard_id TEXT, reason TEXT, amount REAL,
-    issued_by TEXT, created_at TEXT
+    issued_by TEXT, image TEXT, created_at TEXT
   )`);
+  db.run("ALTER TABLE fines ADD COLUMN image TEXT",()=>{});
   db.run(`CREATE TABLE IF NOT EXISTS advances (
     id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT, amount REAL NOT NULL,
     note TEXT, given_by TEXT, created_at TEXT
@@ -111,6 +112,10 @@ db.serialize(()=>{
   db.run(`CREATE TABLE IF NOT EXISTS notices (
     id INTEGER PRIMARY KEY AUTOINCREMENT, from_role TEXT, to_role TEXT, message TEXT,
     reply TEXT, created_at TEXT
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS reliever_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT NOT NULL, message TEXT NOT NULL,
+    created_at TEXT NOT NULL, read_at TEXT
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS help_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT, from_role TEXT, message TEXT, response TEXT,
@@ -387,7 +392,7 @@ app.get('/api/staff',auth,(req,res)=>{
         if(req.user.role==='master_admin')return res.json(out);
         if(req.user.role==='admin') {
           const mine=new Set(by[req.user.staff_id]||[]);
-          out=out.filter(r=>r.staff_id===req.user.staff_id || r.role==='master_admin' || (r.role==='admin'&&r.staff_id!==req.user.staff_id) || (r.role==='field_officer'&&(by[r.staff_id]||[]).some(x=>mine.has(x))) || (['supervisor','guard'].includes(r.role)&&mine.has(r.location_code)));
+          out=out.filter(r=>r.staff_id===req.user.staff_id || r.role==='master_admin' || (r.role==='admin'&&r.staff_id!==req.user.staff_id) || (r.role==='field_officer'&&(by[r.staff_id]||[]).some(x=>mine.has(x))) || (['officer','supervisor','guard'].includes(r.role)&&mine.has(r.location_code)));
         } else if(req.user.role==='field_officer') {
           const mine=new Set(by[req.user.staff_id]||[]);
           out=out.filter(r=>r.staff_id===req.user.staff_id || ((r.role==='supervisor'||r.role==='guard') && mine.has(r.location_code) && (r.role==='supervisor'?r.parent_id===req.user.staff_id:true)));
@@ -438,14 +443,14 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   const location=String(x.location_code||'').trim();
   const parent=String(x.parent_id||'').trim();
 
-  if(!['admin','field_officer','supervisor','guard'].includes(role) ||
+  if(!['admin','field_officer','officer','supervisor','guard'].includes(role) ||
      !String(x.name||'').trim() || !staffId || !password){
     return res.status(400).json({error:'Role, name, Staff ID and password are required'});
   }
   if(password.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});
 
-  // Master Admin can create Admin, Field Officer, Supervisor and Guard.
-  // Admin can create Field Officer, Supervisor and Guard. Only these two roles can create staff.
+  // Master Admin can create Admin, Field Officer, Officer, Supervisor and Guard.
+  // Admin can create Field Officer, Officer, Supervisor and Guard. Only these two roles can create staff.
   if(role==='admin' && req.user.role!=='master_admin')
     return res.status(403).json({error:'Only Master Admin can create Admin'});
 
@@ -456,7 +461,7 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   }
 
   // Field Officer location is optional: when supplied it must be a valid active location.
-  // Field Officers are considered responsible for ALL active locations in the system.
+  // Field Officer location is optional; multiple locations can be assigned later from Location Management.
   get('SELECT id FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
     if(duplicateErr)return res.status(500).json({error:duplicateErr.message});
     if(duplicate)return res.status(409).json({error:`Staff ID ${staffId} already exists. Use a unique Staff ID.`});
@@ -683,12 +688,14 @@ app.post('/api/relievers/assign',auth,roles('admin','master_admin'),async(req,re
   const allowedShifts=shiftForDutyHours(dutyHours);
   const shift=allowedShifts.includes(String(req.body?.shift||''))?String(req.body.shift):allowedShifts[0];
   if(!staffId||!location)return res.status(400).json({error:'Select Reliever and Location'});
-  get('SELECT * FROM staff WHERE staff_id=? AND role IN ("guard","supervisor")',[staffId],async(e,s)=>{
-    if(e)return res.status(500).json({error:e.message}); if(!s)return res.status(404).json({error:'Reliever Guard/Supervisor not found'});
+  get('SELECT * FROM staff WHERE staff_id=? AND role IN ("officer","guard","supervisor")',[staffId],async(e,s)=>{
+    if(e)return res.status(500).json({error:e.message}); if(!s)return res.status(404).json({error:'Reliever Officer/Guard/Supervisor not found'});
     if(s.status!=='active')return res.status(400).json({error:'Only active staff can be assigned as Reliever'});
     get('SELECT code FROM locations WHERE code=? AND active=1',[location],async(le,lr)=>{
       if(le)return res.status(500).json({error:le.message}); if(!lr)return res.status(400).json({error:'Invalid or inactive Location Code'});
       run('UPDATE staff SET is_reliever=1,location_code=?,reliever_duty_hours=?,reliever_shift=? WHERE id=?',[location,dutyHours,shift,s.id],res,async()=>{
+        // Save an in-app notification for the assigned reliever.
+        db.run('INSERT INTO reliever_notifications(staff_id,message,created_at,read_at) VALUES(?,?,?,NULL)',[s.staff_id,`Reliever Duty assigned at ${location} • ${dutyHours} Hours • ${shift}`,new Date().toISOString()]);
         const text=`SNDF MANAGEMENT – Reliever Duty\n\nHello ${s.name},\nYou have been assigned as a RELIEVER.\n\nLocation: ${location}\nDuty Hours: ${dutyHours} Hours\nShift: ${shift} (${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end})\nStaff ID: ${s.staff_id}\nAssigned by: ${req.user.name||req.user.staff_id}\n\nPlease report to the assigned location and complete live attendance check-in.\n\nSNDF Support Services\nWhatsApp: ${process.env.WHATSAPP_SENDER_NUMBER||'8959872715'}`;
         const wa=await sendWhatsAppMessage(s.contact_number,text);
         audit(req.user,'RELIEVER_ASSIGNED',s.staff_id,`${location}; ${dutyHours} hour; ${shift}; whatsapp=${wa.sent?'sent':'not-sent'}`);
@@ -700,7 +707,7 @@ app.post('/api/relievers/assign',auth,roles('admin','master_admin'),async(req,re
 
 // RELIEVER MANAGEMENT - Admin selects Guard/Supervisor, can change their location and mark a reliever check-in.
 app.get('/api/relievers',auth,roles('admin','master_admin','field_officer'),(req,res)=>{
-  const base=`SELECT id,role,name,staff_id,location_code,parent_id,status,is_reliever,reliever_duty_hours,reliever_shift FROM staff WHERE role IN ('guard','supervisor')`;
+  const base=`SELECT id,role,name,staff_id,location_code,parent_id,status,is_reliever,reliever_duty_hours,reliever_shift FROM staff WHERE role IN ('officer','guard','supervisor')`;
   if(req.user.role==='field_officer') return all(base+' AND location_code IN (SELECT location_code FROM location_assignments WHERE staff_id=? AND active=1) ORDER BY role,name',[req.user.staff_id],res);
   all(base+' ORDER BY role,name',[],res);
 });
@@ -719,7 +726,7 @@ app.put('/api/staff/:id/location',auth,roles('admin','master_admin'),(req,res)=>
     if(!lr)return res.status(400).json({error:'Invalid or inactive Location Code'});
   get('SELECT id,staff_id,role FROM staff WHERE id=?',[req.params.id],(e,s)=>{
     if(e)return res.status(500).json({error:e.message}); if(!s)return res.status(404).json({error:'Staff not found'});
-    if(!['guard','supervisor'].includes(s.role))return res.status(400).json({error:'Reliever location can be changed only for Guard/Supervisor'});
+    if(!['officer','guard','supervisor'].includes(s.role))return res.status(400).json({error:'Reliever location can be changed only for Officer/Guard/Supervisor'});
     const saveLocation=(relieverParent)=>{
       run('UPDATE staff SET location_code=?,reliever_parent_id=? WHERE id=?',[location,relieverParent||'',s.id],res,()=>{audit(req.user,'RELIEVER_LOCATION_CHANGED',s.staff_id,`${location}; reliever parent=${relieverParent||''}`);res.json({message:'Location changed',location_code:location,reliever_parent_id:relieverParent||''});});
     };
@@ -733,22 +740,22 @@ app.put('/api/staff/:id/location',auth,roles('admin','master_admin'),(req,res)=>
 app.post('/api/reliever-checkin',auth,roles('admin','master_admin'),(req,res)=>{
   const x=req.body||{}, targetId=String(x.staff_id||'').trim(), location=String(x.location_code||'').trim();
   if(!targetId||!location)return res.status(400).json({error:'Select reliever and location'});
-  get('SELECT * FROM staff WHERE staff_id=? AND role IN ("guard","supervisor")',[targetId],(err,s)=>{
+  get('SELECT * FROM staff WHERE staff_id=? AND role IN ("officer","guard","supervisor")',[targetId],(err,s)=>{
     if(err)return res.status(500).json({error:err.message});
-    if(!s)return res.status(404).json({error:'Reliever Guard/Supervisor not found'});
+    if(!s)return res.status(404).json({error:'Reliever Officer/Guard/Supervisor not found'});
     if(!s.is_reliever)return res.status(403).json({error:'Selected member is not marked as Reliever'});
     const dutyHours=Number(s.reliever_duty_hours)===8?8:12;
     const allowedShifts=shiftForDutyHours(dutyHours);
     const shift=allowedShifts.includes(String(x.shift||''))?String(x.shift):String(s.reliever_shift||allowedShifts[0]);
     const finalShift=allowedShifts.includes(shift)?shift:allowedShifts[0];
-    const now=new Date(), date=attendanceDate, time=now.toTimeString().slice(0,8), iso=now.toISOString();
+    const now=new Date(), date=now.toISOString().slice(0,10), time=now.toTimeString().slice(0,8), iso=now.toISOString();
     get('SELECT id FROM attendance WHERE staff_id=? AND date=? ORDER BY id DESC LIMIT 1',[targetId,date],(ae,existing)=>{
       if(ae)return res.status(500).json({error:ae.message});
       if(existing)return res.status(409).json({error:'Reliever already has attendance today'});
       db.run('UPDATE staff SET location_code=? WHERE id=?',[location,s.id],(ue)=>{
         if(ue)return res.status(500).json({error:ue.message});
-        run('INSERT INTO attendance(staff_id,name,date,photo,location,shift,check_in,check_in_at,attendance_status) VALUES(?,?,?,?,?,?,?,?,?)',
-          [s.staff_id,s.name,date,x.photo||'',location,finalShift,time,iso,'Present - Reliever Check-In'],res,row=>{
+        run('INSERT INTO attendance(staff_id,name,date,photo,location,shift,duty_hours,check_in,check_in_at,attendance_status) VALUES(?,?,?,?,?,?,?,?,?,?)',
+          [s.staff_id,s.name,date,x.photo||'',location,finalShift,dutyHours,time,iso,'Present - Reliever Check-In'],res,row=>{
             audit(req.user,'RELIEVER_CHECKIN',s.staff_id,`${dutyHours}h ${finalShift}; location=${location}`);
             res.status(201).json({id:row.lastID,message:'Reliever check-in saved'});
           });
@@ -1231,8 +1238,14 @@ app.get('/api/attendance/export',auth,roles('admin','master_admin'),(req,res)=>{
 // FINES - Admin and Field Officer can issue fines to Guard or Supervisor. Others can view.
 app.get('/api/fines',auth,(req,res)=>{ const sql=['admin','master_admin'].includes(req.user.role) ? 'SELECT * FROM fines ORDER BY id DESC' : 'SELECT * FROM fines WHERE guard_id=? ORDER BY id DESC'; all(sql,['admin','master_admin'].includes(req.user.role)?[]:[req.user.staff_id],res); });
 app.post('/api/fines',auth,roles('admin','master_admin','field_officer'),(req,res)=>{
-  const x=req.body||{}; if(!x.target_id||!x.reason||Number(x.amount)<=0)return res.status(400).json({error:'Target ID, reason and positive fine amount are required'});
-  get('SELECT role FROM staff WHERE staff_id=?',[x.target_id],(err,s)=>{if(err)return res.status(500).json({error:err.message}); if(!s)return res.status(404).json({error:'Target staff not found'}); if(!['guard','supervisor'].includes(s.role))return res.status(403).json({error:'Fine can only be issued to Guard or Supervisor'}); run('INSERT INTO fines(guard_id,reason,amount,issued_by,created_at) VALUES(?,?,?,?,?)',[x.target_id,x.reason,Number(x.amount),req.user.staff_id,new Date().toISOString()],res,row=>res.status(201).json({id:row.lastID,message:'Fine added'}));});
+  const x=req.body||{}; const targetId=String(x.target_id||'').trim();
+  if(!targetId||!x.reason||Number(x.amount)<=0)return res.status(400).json({error:'Target ID, reason and positive fine amount are required'});
+  get('SELECT role FROM staff WHERE staff_id=?',[targetId],(err,s)=>{
+    if(err)return res.status(500).json({error:err.message});
+    if(!s)return res.status(404).json({error:'Target Staff ID not found'});
+    if(!['guard','supervisor'].includes(s.role))return res.status(403).json({error:'Fine can only be issued to Guard or Supervisor'});
+    run('INSERT INTO fines(guard_id,reason,amount,issued_by,image,created_at) VALUES(?,?,?,?,?,?)',[targetId,x.reason,Number(x.amount),req.user.staff_id,x.image||'',new Date().toISOString()],res,row=>{audit(req.user,'FINE_ADDED',targetId,`₹${Number(x.amount)}; ${x.reason}; image=${x.image?'yes':'no'}`);res.status(201).json({id:row.lastID,message:'Fine added with image record'});});
+  });
 });
 
 // ADVANCE - Admin only.
@@ -1374,6 +1387,10 @@ app.put('/api/point-transfers/:id/reject',auth,roles('admin','master_admin'),(re
     run("UPDATE point_transfer_requests SET status='Rejected',reviewed_at=?,reviewed_by=? WHERE id=?",[new Date().toISOString(),req.user.staff_id,r.id],res,()=>{audit(req.user,'POINT_TRANSFER_REJECTED',r.staff_id,r.to_location);res.json({message:'Point transfer rejected'});});
   });
 });
+
+// RELIEVER NOTIFICATIONS - Staff receive a notification whenever Admin/Master Admin assigns reliever duty.
+app.get('/api/reliever-notifications',auth,(req,res)=>all('SELECT * FROM reliever_notifications WHERE staff_id=? ORDER BY id DESC LIMIT 50',[req.user.staff_id],res));
+app.put('/api/reliever-notifications/:id/read',auth,(req,res)=>run('UPDATE reliever_notifications SET read_at=? WHERE id=? AND staff_id=?',[new Date().toISOString(),req.params.id,req.user.staff_id],res,()=>res.json({message:'Notification marked as read'})));
 
 // Notice / Help.
 app.get('/api/notices',auth,(req,res)=>{ const sql=['admin','master_admin'].includes(req.user.role) ? 'SELECT * FROM notices ORDER BY id DESC LIMIT 200' : "SELECT * FROM notices WHERE to_role=? OR to_role='all' OR from_role=? ORDER BY id DESC LIMIT 200"; all(sql,['admin','master_admin'].includes(req.user.role)?[]:[req.user.role,req.user.role],res); });

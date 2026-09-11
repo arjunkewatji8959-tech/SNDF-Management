@@ -48,8 +48,8 @@ if(createRoleSelect){
   // Master Admin can create Admin/Field Officer/Supervisor/Guard.
   // Admin can create Field Officer/Supervisor/Guard.
   const allowedByRole={
-    master_admin:['admin','field_officer','supervisor','guard'],
-    admin:['field_officer','supervisor','guard']
+    master_admin:['admin','field_officer','officer','supervisor','guard'],
+    admin:['field_officer','officer','supervisor','guard']
   };
   const allowed=allowedByRole[user?.role]||[];
   [...createRoleSelect.options].forEach(o=>{ if(!allowed.includes(o.value)) o.remove(); });
@@ -130,7 +130,7 @@ if(role==='field_officer'){
     .join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';
 }
 // END SECTION: FIELD OFFICER SUPERVISOR LIST
-window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();}catch(e){console.log(e.message)}}
+window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();if(role==='officer')loadOfficerRelieverNotifications();}catch(e){console.log(e.message)}}
 
 // END SECTION: FUNCTION refresh
 
@@ -269,7 +269,7 @@ window.openAttendancePhoto=openAttendancePhoto;
 // =====================================================
 // SECTION: FUNCTION renderFines
 // =====================================================
-function renderFines(rows){const b=$('#fineRows');if(!b)return;b.innerHTML=rows.map(x=>`<tr><td>${escape(x.guard_id)}</td><td>${escape(x.reason)}</td><td>₹${x.amount}</td><td>${escape(x.issued_by)}</td><td>${new Date(x.created_at).toLocaleDateString()}</td></tr>`).join('')||'<tr><td colspan="5">No fines.</td></tr>'}
+function renderFines(rows){const b=$('#fineRows');if(!b)return;b.innerHTML=rows.map(x=>`<tr><td>${x.image?`<img class=\"fine-photo-thumb\" src=\"${escape(x.image)}\" alt=\"Fine evidence\" onclick=\"openAttendancePhoto('${escape(x.image)}')\">`:'—'}</td><td><b>${escape(x.guard_id)}</b></td><td>${escape(x.reason)}</td><td>₹${x.amount}</td><td>${escape(x.issued_by)}</td><td>${new Date(x.created_at).toLocaleDateString()}</td></tr>`).join('')||'<tr><td colspan=\"6\">No fines.</td></tr>'}
 // END SECTION: FUNCTION renderFines
 
 // =====================================================
@@ -356,7 +356,7 @@ async function makePayment(staffId,amount){if(!confirm(`Pay ₹${amount} to ${st
 // =====================================================
 // SECTION: FUNCTION fillTargets
 // =====================================================
-function fillTargets(list){const sel=$('#fineTarget');if(sel)sel.innerHTML='<option value="">Select Guard / Supervisor</option>'+list.filter(s=>['guard','supervisor'].includes(s.role)).map(s=>`<option value="${s.staff_id}">${escape(s.name)} — ${s.staff_id} (${label(s.role)})</option>`).join('')}
+function fillTargets(list){const sel=$('#fineTarget');if(sel)sel.innerHTML='<option value="">Select Officer / Guard / Supervisor</option>'+list.filter(s=>['guard','supervisor'].includes(s.role)).map(s=>`<option value="${s.staff_id}">${escape(s.name)} — ${s.staff_id} (${label(s.role)})</option>`).join('')}
 // END SECTION: FUNCTION fillTargets
 
 // =====================================================
@@ -592,6 +592,7 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       d.amount=Number(d.amount||0);
       if(!d.reason)throw Error('Select a Fine Reason or enter a custom reason');
       if(!Number.isFinite(d.amount)||d.amount<=0)throw Error('Enter a valid Fine Amount');
+      if(!d.image)throw Error('Fine submit karne se pehle live camera image lena zaroori hai.');
       delete d.reason_select; delete d.reason_custom;
     }
     if(form.dataset.type==='staff'){
@@ -790,7 +791,7 @@ async function loadRelievers(){
   try{
     const rows=await api('/relievers'); window._relievers=rows;
     const sel=$('#relieverStaff');
-    sel.innerHTML='<option value="">Select Guard / Supervisor</option>'+rows.filter(x=>x.status==='active').map(x=>`<option value="${escape(x.staff_id)}">${escape(x.name)} — ${escape(x.staff_id)} (${label(x.role)})${x.is_reliever?' • Reliever':''}</option>`).join('');
+    sel.innerHTML='<option value="">Select Officer / Guard / Supervisor</option>'+rows.filter(x=>x.status==='active'&&['officer','guard','supervisor'].includes(x.role)).map(x=>`<option value="${escape(x.staff_id)}">${escape(x.name)} — ${escape(x.staff_id)} (${label(x.role)})${x.is_reliever?' • Reliever':''}</option>`).join('');
     const b=$('#relieverRows');
     const active=rows.filter(x=>x.status==='active');
     const selected=active.filter(x=>Number(x.is_reliever)===1).length;
@@ -1106,6 +1107,7 @@ loadProfile();refresh();
 if($('#p_staff_id')) $('#p_staff_id').value=user.staff_id;
 if(!isAdminRole && !['field_officer','supervisor'].includes(role)){ $('#staff')?.remove(); $('#advance')?.remove(); $('#suspend')?.remove(); $('#profile-records')?.remove(); }
 if(role==='field_officer'){$('#team-management form[data-type="staff"]')?.remove();$('#team-management h3')?.remove();$('#team-management .muted-note')?.remove();}
+if(role==='officer'){['daily','team-attendance','team-management','fine','help','point-transfer','tasks'].forEach(id=>$('#'+id)?.remove());document.querySelectorAll('[data-view="daily"],[data-view="team-attendance"],[data-view="team-management"],[data-view="fine"],[data-view="help"],[data-view="point-transfer"],[data-view="tasks"]').forEach(x=>x.remove());loadOfficerRelieverNotifications();}
 if(!isAdminRole) $$('[onclick^="downloadAttendance"]').forEach(b=>b.remove());
 if(!['admin','field_officer','officer'].includes(role)) $('#fine')?.querySelector('.fine-form')?.remove();
 if(isAdminRole) $('#fine')?.querySelector('.fine-form')?.insertAdjacentHTML('afterend','<p>Admin may fine Guard or Supervisor.</p>');
