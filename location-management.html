@@ -311,6 +311,16 @@
                 </label>
                 <input id="radius" type="number" min="1" value="200" required>
               </div>
+              <div class="field">
+                <label>
+                  Main Office
+                </label>
+                <select id="isMainOffice">
+                  <option value="0">No — Field location / duty point</option>
+                  <option value="1">Yes — Field Officers check in/out here</option>
+                </select>
+                <small class="muted">Only one active location can be the Main Office. Field Officers use this point for their own attendance.</small>
+              </div>
             </div>
             <div class="actions">
               <button type="submit">
@@ -360,6 +370,9 @@
                   </th>
                   <th>
                     Duty Hours
+                  </th>
+                  <th>
+                    Main Office
                   </th>
                   <th>
                     Status

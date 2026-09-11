@@ -205,6 +205,14 @@ db.serialize(()=>{
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   )`);
+  // Main Office flag: Field Officers can check in/out only at the designated Main Office.
+  // Safe migration for existing SQLite databases.
+  db.all('PRAGMA table_info(locations)',[],(tableErr,cols)=>{
+    if(!tableErr && !(cols||[]).some(c=>c.name==='is_main_office')){
+      db.run('ALTER TABLE locations ADD COLUMN is_main_office INTEGER NOT NULL DEFAULT 0');
+    }
+  });
+
   db.run(`CREATE TABLE IF NOT EXISTS shift_schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     staff_id TEXT NOT NULL,
@@ -1279,19 +1287,42 @@ app.get('/api/attendance',auth,(req,res)=>{
        WHERE a.staff_id=? ORDER BY a.id DESC`;
   all(sql,['admin','master_admin'].includes(req.user.role)?[]:[req.user.staff_id],res);
 });
+// MAIN OFFICE — single designated check-in/out point for Field Officers.
+app.get('/api/main-office',auth,(req,res)=>{
+  get('SELECT id,code,name,address,latitude,longitude,radius_meters,duty_shift,duty_hours FROM locations WHERE active=1 AND is_main_office=1 LIMIT 1',[],(e,row)=>{
+    if(e)return res.status(500).json({error:e.message});
+    if(!row)return res.status(404).json({error:'Main Office is not configured. Admin/Director must mark one location as Main Office.'});
+    res.json(row);
+  });
+});
+
 app.post('/api/attendance',auth,(req,res)=>{
   const x=req.body||{};
   const targetId=['admin','master_admin'].includes(req.user.role) ? (x.staff_id||req.user.staff_id) : req.user.staff_id;
   get('SELECT * FROM staff WHERE staff_id=?',[targetId],(err,s)=>{
     if(err)return res.status(500).json({error:err.message}); if(!s)return res.status(404).json({error:'Staff ID not found'});
     if(!['admin','master_admin'].includes(req.user.role) && s.staff_id!==req.user.staff_id)return res.status(403).json({error:'You can mark attendance only for yourself'});
-    get('SELECT duty_hours FROM locations WHERE code=? AND active=1',[s.location_code],(le,loc)=>{
+    // Field Officers are mobile operational staff: their attendance is always recorded
+    // at the designated Main Office, while their assigned locations are management scope only.
+    const resolveAttendanceLocation=(cb)=>{
+      if(s.role==='field_officer'){
+        return get('SELECT * FROM locations WHERE active=1 AND is_main_office=1 LIMIT 1',[],(oe,office)=>{
+          if(oe)return cb(oe);
+          if(!office)return res.status(400).json({error:'Main Office is not configured. Please ask Admin/Director to mark one location as Main Office.'});
+          cb(null,office);
+        });
+      }
+      get('SELECT * FROM locations WHERE code=? AND active=1',[s.location_code],cb);
+    };
+    resolveAttendanceLocation((le,loc)=>{
     if(le)return res.status(500).json({error:le.message});
+    const attendanceLocationCode=String(loc?.code||'').trim();
+    if(!attendanceLocationCode)return res.status(400).json({error:'Attendance Location is not configured for this staff member.'});
     const dutyHours=Number(loc?.duty_hours)===8?8:12;
     const requestedShift=String(x.shift||'');
     const attendanceDate=new Date().toISOString().slice(0,10);
     const applyAttendance=()=>{
-      getEffectiveShift(targetId,s.location_code,attendanceDate,(se,saved)=>{
+      getEffectiveShift(targetId,attendanceLocationCode,attendanceDate,(se,saved)=>{
         const shift=String(saved?.shift||requestedShift||'');
         const effectiveDuty=Number(saved?.duty_hours)===8?8:dutyHours;
         if(!isShiftAllowedForDuty(shift,effectiveDuty)) return res.status(400).json({error:`Invalid shift for ${effectiveDuty}-hour location. Allowed: ${shiftForDutyHours(effectiveDuty).join(', ')}`});
@@ -1299,7 +1330,7 @@ app.post('/api/attendance',auth,(req,res)=>{
       });
     };
     const continueAttendance=(shift,effectiveDuty)=>{
-    checkGeofence(s.location_code,x.location||'',(ge,geo)=>{
+    checkGeofence(attendanceLocationCode,x.location||'',(ge,geo)=>{
     if(ge)return res.status(500).json({error:ge.message});
     if(geo.configured && !geo.allowed) return res.status(403).json({error:geo.error||`You are outside ${s.location_code} geofence (${geo.distance}m / ${geo.radius}m).`});
     const now=new Date(), date=attendanceDate, time=now.toTimeString().slice(0,8), iso=now.toISOString();
@@ -1324,7 +1355,7 @@ app.post('/api/attendance',auth,(req,res)=>{
         if(de)return res.status(500).json({error:de.message});
         if(existing)return res.status(409).json({error:`${shift} attendance is already completed today`});
         run('INSERT INTO attendance(staff_id,name,date,photo,location,shift,duty_hours,check_in,check_in_at,attendance_status) VALUES(?,?,?,?,?,?,?,?,?,?)',
-          [s.staff_id,s.name,date,x.photo||'',x.location||'',shift,effectiveDuty,time,iso,'Present - Shift Started'],res,row=>{audit(req.user,'ATTENDANCE_CHECKIN',s.staff_id,`${shift}; ${dutyHours} hour duty; location=${x.location||''}`);res.status(201).json({id:row.lastID,shift,shift_time:`${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end}`,duty_hours:dutyHours,message:`${shift} check-in saved (${dutyHours} hour duty)`});});
+          [s.staff_id,s.name,date,x.photo||'',attendanceLocationCode+' | '+(x.location||''),shift,effectiveDuty,time,iso,'Present - Shift Started'],res,row=>{audit(req.user,'ATTENDANCE_CHECKIN',s.staff_id,`${shift}; ${dutyHours} hour duty; attendance_location=${attendanceLocationCode}; gps=${x.location||''}`);res.status(201).json({id:row.lastID,shift,shift_time:`${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end}`,duty_hours:dutyHours,message:`${shift} check-in saved (${dutyHours} hour duty)`});});
       });
     });
     });
@@ -1947,7 +1978,7 @@ app.get('/api/location-ownership', auth, roles('admin','master_admin'), (req,res
 
 
 app.post('/api/locations', adminOnly, (req, res) => {
-  const { code, name, address = '', latitude, longitude, radius_meters = 200, duty_shift = '12_hour' } = req.body || {};
+  const { code, name, address = '', latitude, longitude, radius_meters = 200, duty_shift = '12_hour', is_main_office = 0 } = req.body || {};
   const lat = Number(latitude), lng = Number(longitude), radius = Number(radius_meters);
   const duty = String(duty_shift) === '8_hour' ? 8 : (String(duty_shift) === '12_hour' ? 12 : 0);
   if (!code || !name || !duty || !Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(radius) || radius <= 0) {
@@ -1957,15 +1988,18 @@ app.post('/api/locations', adminOnly, (req, res) => {
   const nameValue = String(name).trim();
 
   db.run(
-    `INSERT INTO locations (code,name,address,latitude,longitude,radius_meters,duty_shift,duty_hours)
-     VALUES (?,?,?,?,?,?,?,?)`,
-    [codeValue, nameValue, String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty],
+    `INSERT INTO locations (code,name,address,latitude,longitude,radius_meters,duty_shift,duty_hours,is_main_office)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    [codeValue, nameValue, String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty, is_main_office ? 1 : 0],
     function(err) {
       if (err) {
         if (String(err.message||'').toLowerCase().includes('unique')) return res.status(409).json({ error: `Location Code ${codeValue} already exists. Use a unique Location Code.` });
         return res.status(400).json({ error: err.message });
       }
       const locationId = this.lastID;
+      if(is_main_office){
+        db.run('UPDATE locations SET is_main_office=0 WHERE id<>?',[locationId]);
+      }
 
       // An Admin owns locations it creates, so the new point is immediately usable
       // in Location Distribution and normal Admin location selectors.
@@ -1988,7 +2022,7 @@ app.post('/api/locations', adminOnly, (req, res) => {
 });
 
 app.put('/api/locations/:id', adminOnly, (req, res) => {
-  const { code, name, address = '', latitude, longitude, radius_meters = 200, duty_shift = '12_hour', active = 1 } = req.body || {};
+  const { code, name, address = '', latitude, longitude, radius_meters = 200, duty_shift = '12_hour', active = 1, is_main_office = 0 } = req.body || {};
   const lat = Number(latitude), lng = Number(longitude), radius = Number(radius_meters);
   const duty = String(duty_shift) === '8_hour' ? 8 : (String(duty_shift) === '12_hour' ? 12 : 0);
   if (!code || !name || !duty || !Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(radius) || radius <= 0) {
@@ -2001,14 +2035,15 @@ app.put('/api/locations/:id', adminOnly, (req, res) => {
     if(!existing)return res.status(404).json({error:'Location not found'});
 
     const continueUpdate = () => db.run(
-      `UPDATE locations SET code=?,name=?,address=?,latitude=?,longitude=?,radius_meters=?,duty_shift=?,duty_hours=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-      [newCode, String(name).trim(), String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty, active ? 1 : 0, req.params.id],
+      `UPDATE locations SET code=?,name=?,address=?,latitude=?,longitude=?,radius_meters=?,duty_shift=?,duty_hours=?,active=?,is_main_office=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+      [newCode, String(name).trim(), String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty, active ? 1 : 0, is_main_office ? 1 : 0, req.params.id],
       function(err) {
         if (err) {
           if (String(err.message||'').toLowerCase().includes('unique')) return res.status(409).json({ error: `Location Code ${newCode} already exists. Use a unique Location Code.` });
           return res.status(400).json({ error: err.message });
         }
         if (!this.changes) return res.status(404).json({ error: 'Location not found' });
+        if(is_main_office) db.run('UPDATE locations SET is_main_office=0 WHERE id<>?',[req.params.id]);
 
         // Keep all existing ownership records connected if the location code changes.
         if(existing.code!==newCode){

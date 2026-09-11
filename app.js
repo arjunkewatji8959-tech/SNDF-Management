@@ -342,13 +342,16 @@ function fillCreateParent(list){
   const isNormalAdmin=user?.role==='admin';
   const locations=[...locSel.options].filter(o=>String(o.value||'').trim()).map(o=>String(o.value).trim());
 
-  // Admin and Field Officer may have multiple locations. Supervisor/Guard/Officer use one.
-  const multi=['admin','field_officer'].includes(roleVal);
+  // Admin may start with multiple locations. Field Officer is created with ONE
+  // initial location; additional field locations are assigned later from Location Distribution.
+  const multi=['admin'].includes(roleVal);
   locSel.multiple=multi;
   locSel.size=multi ? Math.min(Math.max(locations.length,3),6) : 1;
   if(locHint)locHint.textContent=multi
     ? `${label(roleVal)}: select one or more active Location Codes.`
-    : 'Select exactly one active Location Code.';
+    : (roleVal==='field_officer'
+      ? 'Select one initial Location Code. Additional locations can be assigned later from Location Distribution.'
+      : 'Select exactly one active Location Code.');
 
   if(!multi && locSel.selectedOptions.length>1){
     const first=locSel.selectedOptions[0];
@@ -600,7 +603,7 @@ function populateLocationSelects(){
 // =====================================================
 
 function currentShift(){
-  const h=new Date().getHours(), duty=currentDutyHours();
+  const h=new Date().getHours(), duty=(window.sndfAttendanceDutyHours||currentDutyHours());
   if(duty===8){
     if(h>=6&&h<14)return 'Morning Shift';
     if(h>=14&&h<22)return 'Evening Shift';
@@ -614,8 +617,20 @@ function currentShift(){
 // =====================================================
 // SECTION: FUNCTION fillAutoAttendance
 // =====================================================
-function fillAutoAttendance(){
-  const map={autoName:user?.name,autoStaffId:user?.staff_id,autoRole:label(user?.role),autoLocationCode:user?.location_code||'—',autoParentId:user?.parent_id||'—',autoShift:currentShift()+' • '+currentDutyHours()+' Hours Duty',autoDutyHours:currentDutyHours()+' Hours'};
+async function fillAutoAttendance(){
+  let attendanceLocation=user?.location_code||'—';
+  let dutyHours=currentDutyHours();
+  if(user?.role==='field_officer'){
+    try{
+      const office=await api('/main-office');
+      attendanceLocation=office?.code||'—';
+      dutyHours=Number(office?.duty_hours)===8?8:12;
+    }catch(e){
+      attendanceLocation='Main Office not configured';
+    }
+  }
+  window.sndfAttendanceDutyHours=dutyHours;
+  const map={autoName:user?.name,autoStaffId:user?.staff_id,autoRole:label(user?.role),autoLocationCode:attendanceLocation,autoParentId:user?.parent_id||'—',autoShift:currentShift()+' • '+dutyHours+' Hours Duty',autoDutyHours:dutyHours+' Hours'};
   Object.entries(map).forEach(([id,v])=>{const x=$('#'+id);if(x)x.textContent=v||'—'});
 }
 // END SECTION: FUNCTION fillAutoAttendance
