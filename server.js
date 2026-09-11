@@ -23,6 +23,7 @@ fs.mkdirSync(dataDir, { recursive: true });
 const dbPath = path.join(dataDir, 'sndf.db');
 console.log(`SNDF SQLite database: ${dbPath}`);
 const db = new sqlite3.Database(dbPath);
+let dbReady = false;
 
 db.configure('busyTimeout', 5000);
 
@@ -30,6 +31,13 @@ app.use(cors());
 app.use(express.json({limit:'12mb'}));
 app.use(express.urlencoded({extended:true}));
 app.use(express.static(frontendPath));
+
+// Hold API requests until SQLite schema + Master Admin bootstrap are complete.
+// This prevents early Railway/Hostinger requests from seeing temporary "no such table/column" errors.
+app.use('/api', (req,res,next)=>{
+  if (req.path === '/deployment' || req.path === '/health' || dbReady) return next();
+  return res.status(503).json({error:'Database is starting. Please retry in a moment.'});
+});
 
 // Simple deployment diagnostics (does not expose database credentials).
 app.get('/api/deployment', (req,res)=>res.json({
@@ -169,24 +177,33 @@ db.serialize(()=>{
   )`);
 
 
-  // MASTER ADMIN bootstrap: one permanent top-level account.
-  // Master Admin controls Admin + Field Officer + Supervisor + Guard.
-  db.get("SELECT id,role FROM staff WHERE staff_id='adi123' LIMIT 1", (masterErr, masterRow) => {
-    const ensureMaster = () => {
-      bcrypt.hash('sndf1234', 12, (hashErr, hashedPassword) => {
-        if(hashErr){ console.error('Master Admin password hash failed:', hashErr.message); return; }
-        db.run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,department,status)
-                VALUES('master_admin','SNDF Master Admin','adi123',?,'Master Admin',0,'','','Management','active')
-                ON CONFLICT(staff_id) DO UPDATE SET role='master_admin',post='Master Admin',name='SNDF Master Admin',password=excluded.password,status='active'`,
-          [hashedPassword], (e)=>{ if(e) console.error('Master Admin bootstrap failed:',e.message); else console.log('Master Admin ready: adi123'); });
-      });
-    };
-    if(masterErr) console.error('Master Admin lookup failed:', masterErr.message);
-    else if(!masterRow || masterRow.role!=='master_admin') ensureMaster();
-  });
+  // MASTER ADMIN bootstrap:
+  // Keep one fixed top-level account and never delete/overwrite other staff records.
+  // Using a synchronous bcrypt hash here keeps the final database-ready signal ordered.
+  const masterPasswordHash = bcrypt.hashSync('sndf1234', 12);
+  db.run(
+    `INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,department,status)
+     VALUES('master_admin','SNDF Master Admin','adi123',?,'Master Admin',0,'','','Management','active')
+     ON CONFLICT(staff_id) DO UPDATE SET
+       role='master_admin',
+       post='Master Admin',
+       name='SNDF Master Admin',
+       password=excluded.password,
+       status='active'`,
+    [masterPasswordHash],
+    (masterErr) => {
+      if (masterErr) {
+        console.error('Master Admin bootstrap failed:', masterErr.message);
+        return;
+      }
+      console.log('Master Admin ready: adi123');
+      dbReady = true;
+    }
+  );
 
-  // Production database intentionally starts with Master Admin only.
-  // Real Admin accounts must be created explicitly from Master Admin -> Create / Manage Members.
+  // Production database intentionally starts with Master Admin only when no other
+  // records exist. Existing production records are never cleared by this startup code.
+
 });
 
 // =====================================================
@@ -392,7 +409,7 @@ app.get('/api/staff',auth,(req,res)=>{
         if(req.user.role==='master_admin')return res.json(out);
         if(req.user.role==='admin') {
           const mine=new Set(by[req.user.staff_id]||[]);
-          out=out.filter(r=>r.staff_id===req.user.staff_id || r.role==='master_admin' || (r.role==='admin'&&r.staff_id!==req.user.staff_id) || (r.role==='field_officer'&&(by[r.staff_id]||[]).some(x=>mine.has(x))) || (['officer','supervisor','guard'].includes(r.role)&&mine.has(r.location_code)));
+          out=out.filter(r=>r.staff_id===req.user.staff_id || r.role==='master_admin' || (r.role==='field_officer'&&(by[r.staff_id]||[]).some(x=>mine.has(x))) || (['officer','supervisor','guard'].includes(r.role)&&mine.has(r.location_code)));
         } else if(req.user.role==='field_officer') {
           const mine=new Set(by[req.user.staff_id]||[]);
           out=out.filter(r=>r.staff_id===req.user.staff_id || ((r.role==='supervisor'||r.role==='guard') && mine.has(r.location_code) && (r.role==='supervisor'?r.parent_id===req.user.staff_id:true)));
@@ -553,7 +570,34 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
 });
 // END SECTION: STAFF CREATION + HIERARCHY
 
-app.delete('/api/staff/:id',auth,roles('admin','master_admin'),(req,res)=>run('DELETE FROM staff WHERE id=?',[req.params.id],res,()=>res.json({message:'Deleted'})));
+app.delete('/api/staff/:id',auth,roles('admin','master_admin'),(req,res)=>{
+  get('SELECT id,role,staff_id,name,location_code FROM staff WHERE id=?',[req.params.id],(err,target)=>{
+    if(err)return res.status(500).json({error:err.message});
+    if(!target)return res.status(404).json({error:'Staff not found'});
+    if(target.role==='master_admin')return res.status(403).json({error:'Master Admin cannot be deleted'});
+    if(req.user.role==='admin' && target.role==='admin')
+      return res.status(403).json({error:'Only Master Admin can delete Admin accounts'});
+    const remove=()=>db.serialize(()=>{
+      db.run('DELETE FROM location_assignments WHERE staff_id=?',[target.staff_id]);
+      db.run('DELETE FROM shift_schedules WHERE staff_id=?',[target.staff_id]);
+      db.run('DELETE FROM staff WHERE id=?',[target.id],function(de){
+        if(de)return res.status(500).json({error:de.message});
+        if(!this.changes)return res.status(404).json({error:'Staff not found'});
+        audit(req.user,'STAFF_DELETED',target.staff_id,`${target.role} ${target.name}`);
+        res.json({message:'Deleted'});
+      });
+    });
+    if(req.user.role==='admin'){
+      if(!target.location_code)return res.status(403).json({error:'You cannot delete a member without an assigned point'});
+      return get('SELECT 1 FROM location_assignments WHERE staff_id=? AND location_code=? AND active=1',[req.user.staff_id,target.location_code],(oe,owned)=>{
+        if(oe)return res.status(500).json({error:oe.message});
+        if(!owned)return res.status(403).json({error:'You cannot delete a member outside your assigned points'});
+        remove();
+      });
+    }
+    remove();
+  });
+});
 
 // ADMIN PROFILE RECORD EDIT - Admin only. Password is updated only when a new one is supplied.
 app.put('/api/staff/:id/profile',auth,roles('admin','master_admin'),(req,res)=>{
@@ -563,6 +607,10 @@ app.put('/api/staff/:id/profile',auth,roles('admin','master_admin'),(req,res)=>{
     if(!s)return res.status(404).json({error:'Staff not found'});
     if(s.role==='master_admin')return res.status(403).json({error:'Master Admin profile is protected'});
     const newRole=['admin','field_officer','officer','supervisor','guard'].includes(x.role)?x.role:s.role;
+    // Normal Admin cannot edit another Admin, create/elevate to Admin, or touch Master Admin.
+    if(req.user.role==='admin' && (s.role==='admin' || s.role==='master_admin' || newRole==='admin')){
+      return res.status(403).json({error:'Only Master Admin can manage Admin accounts'});
+    }
     const location=String(x.location_code||'').trim();
     const parent=String(x.parent_id||'').trim();
     const validateEditLocation=(next)=>{
@@ -655,7 +703,11 @@ app.put('/api/staff/:id/password',auth,roles('admin','master_admin'),(req,res)=>
 });
 
 // Admin profile editing; all roles can update their own DP/contact only.
-app.get('/api/profile/me',auth,(req,res)=>res.json({user:req.user}));
+app.get('/api/profile/me',auth,(req,res)=>{
+  const safe={...req.user};
+  delete safe.password;
+  res.json({user:safe});
+});
 app.put('/api/profile/me',auth,(req,res)=>{
   const x=req.body||{};
   const role=req.user.role;
@@ -1929,6 +1981,8 @@ app.delete('/api/locations/:id', adminOnly, (req, res) => {
     const continueDelete = () => db.serialize(()=>{
       db.run('DELETE FROM location_assignments WHERE location_code=?',[existing.code]);
       db.run('DELETE FROM shift_schedules WHERE location_code=?',[existing.code]);
+      // Keep staff records valid after a location is deleted.
+      db.run('UPDATE staff SET location_code=? WHERE location_code=?',['',existing.code]);
       db.run('DELETE FROM locations WHERE id=?',[req.params.id],function(err){
         if(err)return res.status(500).json({error:err.message});
         if(!this.changes)return res.status(404).json({error:'Location not found'});
@@ -1951,6 +2005,26 @@ app.delete('/api/locations/:id', adminOnly, (req, res) => {
     continueDelete();
   });
 });
+
+// =====================================================
+// SECTION: API ERROR HANDLING
+// Return JSON for malformed JSON requests and unknown API endpoints.
+// This prevents frontend fetch() calls from receiving an HTML error page.
+// =====================================================
+app.use('/api', (err, req, res, next) => {
+  if (err) {
+    console.error('API error:', err.message);
+    return res.status(err.status || 400).json({error: err.message || 'Invalid API request'});
+  }
+  next();
+});
+
+app.use('/api', (req,res,next)=>{
+  if (!res.headersSent) return res.status(404).json({error:'API endpoint not found'});
+  next();
+});
+
+// END SECTION: API ERROR HANDLING
 
 setInterval(scanPointPushDue,30000);
 setTimeout(scanPointPushDue,5000);

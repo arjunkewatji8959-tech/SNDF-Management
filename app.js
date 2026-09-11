@@ -390,6 +390,8 @@ function fillAdminPresentLocations(){
 function setupAdminMarkPresent(){
   const form=$('#adminMarkPresentForm');
   if(!form||!isAdminRole)return;
+  if(form.dataset.bound==='1') return;
+  form.dataset.bound='1';
   const date=$('#adminPresentDate');
   if(date&&!date.value)date.value=new Date().toISOString().slice(0,10);
   fillAdminPresentLocations();
@@ -406,7 +408,12 @@ function setupAdminMarkPresent(){
 }
 // END SECTION: ADMIN MARK PRESENT UI
 
-function fillTargets(list){const sel=$('#fineTarget');if(sel)sel.innerHTML='<option value="">Select Officer / Guard / Supervisor</option>'+list.filter(s=>['guard','supervisor'].includes(s.role)).map(s=>`<option value="${s.staff_id}">${escape(s.name)} — ${s.staff_id} (${label(s.role)})</option>`).join('')}
+function fillTargets(list){
+ const input=$('#fineTarget'), listBox=$('#fineTargetList');
+ if(!input||!listBox)return;
+ const targets=list.filter(s=>['guard','supervisor'].includes(s.role));
+ listBox.innerHTML=targets.map(s=>`<option value="${escape(s.staff_id)}" label="${escape(s.name)} — ${label(s.role)}"></option>`).join('');
+}
 // END SECTION: FUNCTION fillTargets
 
 // =====================================================

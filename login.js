@@ -7,14 +7,13 @@ document.getElementById('loginForm')?.addEventListener('submit',async e=>{
   const msg=document.getElementById('loginMsg');
   const staffId=document.getElementById('staff_id')?.value.trim();
   const password=document.getElementById('password')?.value||'';
-  const role=roleSelect?.value||'';
   msg.textContent='Checking login...';
   msg.className='login-msg';
   try{
     const response=await fetch('/api/login',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({staff_id:staffId,password,role})
+      body:JSON.stringify({staff_id:staffId,password})
     });
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||'Login failed');
