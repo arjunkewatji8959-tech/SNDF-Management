@@ -457,8 +457,12 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   const role=String(x.role||'').trim().toLowerCase();
   const staffId=String(x.staff_id||'').trim();
   const password=String(x.password??'');
-  const location=String(x.location_code||'').trim();
+  const singleLocation=String(x.location_code||'').trim();
+  const requestedLocations=Array.isArray(x.location_codes)
+    ? [...new Set(x.location_codes.map(v=>String(v||'').trim()).filter(Boolean))]
+    : (singleLocation ? [singleLocation] : []);
   const parent=String(x.parent_id||'').trim();
+  const adminCreating=req.user.role==='admin';
 
   if(!['admin','field_officer','officer','supervisor','guard'].includes(role) ||
      !String(x.name||'').trim() || !staffId || !password){
@@ -466,106 +470,111 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   }
   if(password.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});
 
-  // Master Admin can create Admin, Field Officer, Officer, Supervisor and Guard.
-  // Admin can create Field Officer, Officer, Supervisor and Guard. Only these two roles can create staff.
-  if(role==='admin' && req.user.role!=='master_admin')
+  // Master Admin remains unchanged. Normal Admin cannot create another Admin.
+  if(role==='admin' && adminCreating)
     return res.status(403).json({error:'Only Master Admin can create Admin'});
 
-  // Supervisor and Guard always require both a valid parent and an active location.
-  if(['supervisor','guard'].includes(role)){
+  // Normal Admin hierarchy:
+  // Admin -> Field Officer / Officer -> Supervisor -> Guard.
+  // Every member created by a normal Admin requires Parent ID + Location.
+  if(adminCreating && role!=='admin'){
     if(!parent)return res.status(400).json({error:`Parent ID is required for ${role}`});
-    if(!location)return res.status(400).json({error:`Location Code is required for ${role}`});
+    if(!requestedLocations.length)return res.status(400).json({error:`Location Code is required for ${role}`});
   }
 
-  // Field Officer location is optional: when supplied it must be a valid active location.
-  // Field Officer location is optional; multiple locations can be assigned later from Location Management.
-  get('SELECT id FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
+  // Supervisor and Guard always require a parent and one exact working location.
+  if(['supervisor','guard'].includes(role)){
+    if(!parent)return res.status(400).json({error:`Parent ID is required for ${role}`});
+    if(!singleLocation)return res.status(400).json({error:`Location Code is required for ${role}`});
+    if(requestedLocations.length!==1)return res.status(400).json({error:`${role} can have only one Location Code`});
+  }
+
+  get('SELECT id,role,name,staff_id,status FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
     if(duplicateErr)return res.status(500).json({error:duplicateErr.message});
     if(duplicate)return res.status(409).json({error:`Staff ID ${staffId} already exists. Use a unique Staff ID.`});
+
+    const finishCreation=(row,assignedCount=0)=>{
+      audit(req.user,'STAFF_CREATED',staffId,`${role} ${x.name} created; parent=${parent||'none'}; locations=${requestedLocations.join(',')||'none'}`);
+      res.status(201).json({id:row.lastID,staff_id:staffId,role,name:String(x.name).trim(),assigned_locations:requestedLocations,message:`Staff created successfully. Staff ID: ${staffId}`});
+    };
+
+    const saveAssignments=(row,done)=>{
+      if(!requestedLocations.length)return done(0);
+      db.serialize(()=>{
+        const stmt=db.prepare('INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active) VALUES(?,?,?,1)');
+        requestedLocations.forEach(code=>stmt.run(staffId,code,req.user.staff_id));
+        stmt.finalize(err=>err?res.status(500).json({error:'Member created but location assignment failed: '+err.message}):done(requestedLocations.length));
+      });
+    };
 
     const validateAndCreate=()=>{
       bcrypt.hash(password,12,(he,hashed)=>{
         if(he)return res.status(500).json({error:'Password setup failed'});
+        const storedLocation = requestedLocations[0] || '';
         run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,dob,department,contact_number,dp,age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,driving_license,training_details,work_experience,photo_front,photo_back,photo_left,photo_right,is_reliever)
              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [role,String(x.name).trim(),staffId,hashed,x.post||role,x.salary||0,location,parent,x.dob||'',x.department||'',x.contact_number||'',x.dp||'',
+          [role,String(x.name).trim(),staffId,hashed,x.post||role,x.salary||0,storedLocation,parent,x.dob||'',x.department||'',x.contact_number||'',x.dp||'',
            x.age||null,x.height||null,x.weight||null,x.blood_group||'',x.qualification||'',x.physical_level||'',x.medical_level||'',x.skills||'',x.police_verification||'',x.driving_license||'',x.training_details||'',x.work_experience||'',x.photo_front||'',x.photo_back||'',x.photo_left||'',x.photo_right||'',Number(x.is_reliever)?1:0],
-          res,row=>{
-            // Save an initial location assignment at account creation when a location was selected.
-            // This keeps the new Field Officer/Admin immediately visible in Location Distribution.
-            const finishCreation=()=>{
-              audit(req.user,'STAFF_CREATED',staffId,`${role} ${x.name} created; parent=${parent||'none'}; location=${location||'ALL_LOCATIONS'}`);
-              res.status(201).json({id:row.lastID,staff_id:staffId,role,name:String(x.name).trim(),message:`Staff created successfully. Staff ID: ${staffId}`});
-            };
-
-            if(location && ['admin','field_officer'].includes(role)){
-              db.run(
-                `INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active) VALUES(?,?,?,1)`,
-                [staffId,location,req.user.staff_id],
-                assignmentErr => {
-                  if(assignmentErr) return res.status(500).json({error:'Member created but location assignment failed: '+assignmentErr.message});
-                  finishCreation();
-                }
-              );
-            } else {
-              finishCreation();
-            }
-          });
+          res,row=>saveAssignments(row,count=>finishCreation(row,count)));
       });
     };
 
-    // Field Officer: parent is optional. A selected location is optional, but when supplied
-    // it must be active and within the creator's permitted locations. The initial assignment
-    // is saved by validateAndCreate() so the member appears immediately in Location Distribution.
-    if(role==='field_officer'){
-      if(!location)return validateAndCreate();
-      get('SELECT code FROM locations WHERE code=? AND active=1',[location],(le,lr)=>{
+    // Validate the normal Admin's parent first. This prevents creating an orphan account.
+    const validateAdminParent=next=>{
+      if(!adminCreating || role==='admin')return next();
+      get('SELECT id,role,status,staff_id FROM staff WHERE staff_id=?',[parent],(pe,pr)=>{
+        if(pe)return res.status(500).json({error:pe.message});
+        if(!pr || pr.role!=='admin' || pr.status!=='active')return res.status(400).json({error:'Parent ID must be the active Admin Staff ID'});
+        if(parent!==req.user.staff_id)return res.status(400).json({error:'Parent ID must be the logged-in Admin Staff ID'});
+        next();
+      });
+    };
+
+    // Validate all selected locations. A Field Officer may have multiple locations;
+    // Officer uses one location. Admin can only use locations assigned to itself.
+    const validateLocations=next=>{
+      if(!requestedLocations.length)return next();
+      const placeholders=requestedLocations.map(()=>'?').join(',');
+      db.all(`SELECT code FROM locations WHERE active=1 AND code IN (${placeholders})`,requestedLocations,(le,rows)=>{
         if(le)return res.status(500).json({error:le.message});
-        if(!lr)return res.status(400).json({error:'Invalid or inactive Location Code. Create the location first.'});
-        canUseLocation(req,location,(ce,allowed)=>{
-          if(ce)return res.status(500).json({error:ce.message});
-          if(!allowed)return res.status(403).json({error:'You cannot assign this location to a new Field Officer'});
-          validateAndCreate();
+        const valid=new Set((rows||[]).map(r=>String(r.code)));
+        const invalid=requestedLocations.filter(c=>!valid.has(c));
+        if(invalid.length)return res.status(400).json({error:'Invalid or inactive Location Code: '+invalid.join(', ')});
+        if(req.user.role==='master_admin')return next();
+        db.all(`SELECT location_code FROM location_assignments WHERE staff_id=? AND active=1 AND location_code IN (${placeholders})`,[req.user.staff_id,...requestedLocations],(ae,owned)=>{
+          if(ae)return res.status(500).json({error:ae.message});
+          const ownedSet=new Set((owned||[]).map(r=>String(r.location_code)));
+          const notOwned=requestedLocations.filter(c=>!ownedSet.has(c));
+          if(notOwned.length)return res.status(403).json({error:'Admin can use only its assigned locations: '+notOwned.join(', ')});
+          next();
         });
       });
-      return;
-    }
+    };
 
-    // Supervisor: parent MUST be a Field Officer and location MUST be active.
-    if(role==='supervisor'){
-      return get('SELECT role FROM staff WHERE staff_id=?',[parent],(e,p)=>{
+    const validateSupervisorParent=next=>{
+      if(role!=='supervisor')return next();
+      get('SELECT role,status FROM staff WHERE staff_id=?',[parent],(e,p)=>{
         if(e)return res.status(500).json({error:e.message});
-        if(!p || p.role!=='field_officer') return res.status(400).json({error:'Supervisor Parent ID must be a Field Officer Staff ID'});
-        get('SELECT code FROM locations WHERE code=? AND active=1',[location],(le,lr)=>{
-          if(le)return res.status(500).json({error:le.message});
-          if(!lr)return res.status(400).json({error:'Invalid or inactive Location Code. Create the location first.'});
-          get('SELECT id FROM location_assignments WHERE staff_id=? AND location_code=? AND active=1',[parent,location],(ae,assigned)=>{
-            if(ae)return res.status(500).json({error:ae.message});
-            if(!assigned)return res.status(400).json({error:'This Location is not assigned to the selected Field Officer'});
-            validateAndCreate();
-          });
+        if(!p || p.role!=='field_officer' || p.status!=='active')return res.status(400).json({error:'Supervisor Parent ID must be an active Field Officer Staff ID'});
+        get('SELECT id FROM location_assignments WHERE staff_id=? AND location_code=? AND active=1',[parent,singleLocation],(ae,assigned)=>{
+          if(ae)return res.status(500).json({error:ae.message});
+          if(!assigned)return res.status(400).json({error:'This Location is not assigned to the selected Field Officer'});
+          next();
         });
       });
-    }
+    };
 
-    // Guard: parent MUST be a Supervisor and location MUST match the Supervisor exactly.
-    if(role==='guard'){
-      return get('SELECT role,location_code FROM staff WHERE staff_id=?',[parent],(e,p)=>{
+    const validateGuardParent=next=>{
+      if(role!=='guard')return next();
+      get('SELECT role,status,location_code FROM staff WHERE staff_id=?',[parent],(e,p)=>{
         if(e)return res.status(500).json({error:e.message});
-        if(!p || p.role!=='supervisor')
-          return res.status(400).json({error:'Guard Parent ID must be a Supervisor Staff ID'});
-        if(String(p.location_code||'')!==location)
-          return res.status(400).json({error:'Guard location must exactly match the Supervisor location'});
-        get('SELECT code FROM locations WHERE code=? AND active=1',[location],(le,lr)=>{
-          if(le)return res.status(500).json({error:le.message});
-          if(!lr)return res.status(400).json({error:'Invalid or inactive Location Code. Create the location first.'});
-          validateAndCreate();
-        });
+        if(!p || p.role!=='supervisor' || p.status!=='active')return res.status(400).json({error:'Guard Parent ID must be an active Supervisor Staff ID'});
+        if(String(p.location_code||'')!==singleLocation)return res.status(400).json({error:'Guard location must exactly match the Supervisor location'});
+        next();
       });
-    }
+    };
 
-    // Admin creation (Master Admin only) does not require Parent ID or Location.
-    validateAndCreate();
+    validateAdminParent(()=>validateLocations(()=>validateSupervisorParent(()=>validateGuardParent(validateAndCreate))));
   });
 });
 // END SECTION: STAFF CREATION + HIERARCHY

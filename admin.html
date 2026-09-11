@@ -1173,15 +1173,25 @@
               <input name="salary" type="number" min="0" placeholder="Salary">
               <input name="dob" type="date">
               <input name="department" placeholder="Department">
+              <!-- SECTION: MEMBER LOCATION -->
               <select name="location_code" id="createLocation">
                 <option value="">
                   Select Location (Create Location First)
                 </option>
               </select>
+              <small id="createLocationHint" class="muted-note">Select the working Location Code.</small>
+              <!-- END SECTION: MEMBER LOCATION -->
+
+              <!-- SECTION: MEMBER PARENT -->
               <select name="parent_id" id="createParent">
-                <option value="">Parent ID (Optional)</option>
+                <option value="">Select Parent ID</option>
               </select>
-              <small class="muted-note">Supervisor: Field Officer Parent ID + Location Code required. Guard: Supervisor Parent ID + same Location Code required.</small>
+              <small id="createParentHint" class="muted-note">Parent ID is required for members created by Admin.</small>
+              <!-- END SECTION: MEMBER PARENT -->
+
+              <small id="createHierarchyHint" class="muted-note">
+                Admin → Field Officer / Officer → Supervisor → Guard. Field Officer can be assigned to multiple locations. Supervisor and Guard use one location.
+              </small>
               <input name="contact_number" placeholder="Contact Number">
               <button class="action primary-action">
                 Create Member
