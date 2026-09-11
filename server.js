@@ -222,6 +222,33 @@ db.serialize(()=>{
   db.run(`CREATE INDEX IF NOT EXISTS idx_staff_location ON staff(location_code)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_attendance_staff_date ON attendance(staff_id,date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_location_assignments_staff ON location_assignments(staff_id,active)`);
+
+  // LEGACY LOCATION-CODE REPAIR
+  // Older SNDF databases may contain a location with an empty code. The UI cannot
+  // submit that option because the code is the stable key used by assignments.
+  // Give legacy blank-code locations a deterministic code before the app becomes ready.
+  db.all(`SELECT id FROM locations WHERE TRIM(COALESCE(code,''))='' ORDER BY id`, [], (legacyErr, legacyRows) => {
+    if (legacyErr) {
+      console.error('Legacy location-code check failed:', legacyErr.message);
+    } else if (legacyRows && legacyRows.length) {
+      let pending = legacyRows.length;
+      legacyRows.forEach(row => {
+        const generated = 'LOC' + String(row.id).padStart(3,'0');
+        db.run('UPDATE locations SET code=? WHERE id=?', [generated, row.id], (updateErr) => {
+          if (updateErr) console.error('Legacy location code repair failed:', updateErr.message);
+          // If the old location was referenced with an empty code, keep those records
+          // connected to the repaired legacy location. This is intentionally scoped to
+          // blank-code records only and never changes valid location codes.
+          db.run("UPDATE staff SET location_code=? WHERE TRIM(COALESCE(location_code,''))=''", [generated]);
+          db.run("UPDATE location_assignments SET location_code=? WHERE TRIM(COALESCE(location_code,''))=''", [generated]);
+          db.run("UPDATE shift_schedules SET location_code=? WHERE TRIM(COALESCE(location_code,''))=''", [generated], () => {
+            if (--pending === 0) console.log(`Repaired ${legacyRows.length} legacy blank Location Code(s).`);
+          });
+        });
+      });
+    }
+  });
+
   db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active)
     SELECT staff_id,location_code,'system-migration',1 FROM staff
     WHERE role IN ('admin','field_officer') AND TRIM(COALESCE(location_code,''))<>''`);
