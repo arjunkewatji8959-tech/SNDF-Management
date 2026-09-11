@@ -628,6 +628,52 @@ async function startLiveCamera(){
   try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:720},height:{ideal:720}},audio:false});const v=$('#camera');if(v)v.srcObject=stream;}
   catch(e){msg('Camera permission required. Tap Take Photo after allowing camera.');}
 }
+
+// =====================================================
+// SECTION: FINE CAMERA
+// =====================================================
+let fineStream=null;
+async function startFineCamera(){
+  const v=$('#fineCamera');
+  if(!v)return;
+  if(!window.isSecureContext && location.hostname!=='localhost' && location.hostname!=='127.0.0.1'){
+    msg('Camera needs HTTPS. Railway public URL must use https://.');
+    return;
+  }
+  if(!navigator.mediaDevices?.getUserMedia){
+    msg('This browser does not support camera access.');
+    return;
+  }
+  try{
+    if(fineStream) fineStream.getTracks().forEach(t=>t.stop());
+    fineStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}},audio:false});
+    v.srcObject=fineStream;
+    await v.play().catch(()=>{});
+  }catch(e){
+    console.error('Fine camera:',e);
+    msg('Fine camera permission denied. Allow Camera in browser settings and try again.');
+  }
+}
+$('#fineCapture')?.addEventListener('click',async()=>{
+  if(!fineStream) await startFineCamera();
+  const v=$('#fineCamera');
+  if(!v?.videoWidth){alert('Fine camera start nahi hua. Camera permission allow karein.');return;}
+  const c=document.createElement('canvas');
+  c.width=Math.min(v.videoWidth,1280);
+  c.height=Math.round(c.width*(v.videoHeight/v.videoWidth));
+  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+  const image=c.toDataURL('image/jpeg',.78);
+  const hidden=$('#fineImage'); if(hidden) hidden.value=image;
+  const preview=$('#fineCaptured'); if(preview){preview.src=image;preview.style.display='block';}
+  msg('Fine evidence photo captured ✓');
+});
+$('#fineRetake')?.addEventListener('click',()=>{
+  const hidden=$('#fineImage'); if(hidden) hidden.value='';
+  const preview=$('#fineCaptured'); if(preview) preview.removeAttribute('src');
+  startFineCamera();
+});
+// Start when Fine section becomes visible; also retry on first capture.
+startFineCamera();
 // END SECTION: FUNCTION startLiveCamera
 
 // =====================================================
