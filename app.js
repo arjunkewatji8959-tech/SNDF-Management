@@ -121,7 +121,27 @@ async function loadPremiumDashboard(stats){
 
 // =====================================================
 
-async function refresh(){try{await loadLocationConfigs(); populateLocationSelects(); fillAutoAttendance(); const [s,a,f,ac,stats]=await Promise.all([api('/staff'),api('/attendance'),api('/fines'),api('/account/me'),api('/stats')]);staff=s;
+async function refresh(){
+try{
+  // Load each core dataset independently so one failing module (for example Location)
+  // cannot prevent Admin/Member lists from rendering.
+  await loadLocationConfigs();
+  populateLocationSelects();
+  fillAutoAttendance();
+
+  const safe = async (path, fallback) => {
+    try { return await api(path); }
+    catch (e) { console.warn('SNDF API:', path, e.message); return fallback; }
+  };
+
+  const [s,a,f,ac,stats]=await Promise.all([
+    safe('/staff',[]),
+    safe('/attendance',[]),
+    safe('/fines',[]),
+    safe('/account/me',{}),
+    safe('/stats',{})
+  ]);
+  staff=Array.isArray(s)?s:[];
 if(role==='field_officer'){
   const x=$('#createSupervisorParent'); if(x)x.value=user.staff_id;
   const b=$('#mySupervisorRows');

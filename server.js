@@ -482,8 +482,14 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
             };
 
             if(location && ['admin','field_officer'].includes(role)){
-              db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active) VALUES(?,?,?,1)`,
-                [staffId,location,req.user.staff_id],()=>finishCreation());
+              db.run(
+                `INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active) VALUES(?,?,?,1)`,
+                [staffId,location,req.user.staff_id],
+                assignmentErr => {
+                  if(assignmentErr) return res.status(500).json({error:'Member created but location assignment failed: '+assignmentErr.message});
+                  finishCreation();
+                }
+              );
             } else {
               finishCreation();
             }
@@ -1834,14 +1840,16 @@ app.post('/api/locations', adminOnly, (req, res) => {
   if (!code || !name || !duty || !Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(radius) || radius <= 0) {
     return res.status(400).json({ error: 'Code, name, latitude, longitude, valid radius and duty shift are required' });
   }
+  const codeValue = String(code).trim();
+  const nameValue = String(name).trim();
+
   db.run(
     `INSERT INTO locations (code,name,address,latitude,longitude,radius_meters,duty_shift,duty_hours)
      VALUES (?,?,?,?,?,?,?,?)`,
-    [String(code).trim(), String(name).trim(), String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty],
+    [codeValue, nameValue, String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty],
     function(err) {
       if (err) return res.status(400).json({ error: err.message });
       const locationId = this.lastID;
-      const codeValue = String(code).trim();
 
       // An Admin owns locations it creates, so the new point is immediately usable
       // in Location Distribution and normal Admin location selectors.
@@ -1876,7 +1884,7 @@ app.put('/api/locations/:id', adminOnly, (req, res) => {
     if(findErr)return res.status(500).json({error:findErr.message});
     if(!existing)return res.status(404).json({error:'Location not found'});
 
-    db.run(
+    const continueUpdate = () => db.run(
       `UPDATE locations SET code=?,name=?,address=?,latitude=?,longitude=?,radius_meters=?,duty_shift=?,duty_hours=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
       [newCode, String(name).trim(), String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty, active ? 1 : 0, req.params.id],
       function(err) {
@@ -1897,6 +1905,19 @@ app.put('/api/locations/:id', adminOnly, (req, res) => {
         }
       }
     );
+
+    if(req.user.role==='admin'){
+      return get(
+        'SELECT 1 FROM location_assignments WHERE staff_id=? AND location_code=? AND active=1 LIMIT 1',
+        [req.user.staff_id, existing.code],
+        (ownerErr,owned)=>{
+          if(ownerErr)return res.status(500).json({error:ownerErr.message});
+          if(!owned)return res.status(403).json({error:'You cannot edit a location outside your assigned points'});
+          continueUpdate();
+        }
+      );
+    }
+    continueUpdate();
   });
 });
 
@@ -1905,7 +1926,7 @@ app.delete('/api/locations/:id', adminOnly, (req, res) => {
     if(findErr)return res.status(500).json({error:findErr.message});
     if(!existing)return res.status(404).json({error:'Location not found'});
 
-    db.serialize(()=>{
+    const continueDelete = () => db.serialize(()=>{
       db.run('DELETE FROM location_assignments WHERE location_code=?',[existing.code]);
       db.run('DELETE FROM shift_schedules WHERE location_code=?',[existing.code]);
       db.run('DELETE FROM locations WHERE id=?',[req.params.id],function(err){
@@ -1915,6 +1936,19 @@ app.delete('/api/locations/:id', adminOnly, (req, res) => {
         res.json({ok:true});
       });
     });
+
+    if(req.user.role==='admin'){
+      return get(
+        'SELECT 1 FROM location_assignments WHERE staff_id=? AND location_code=? AND active=1 LIMIT 1',
+        [req.user.staff_id, existing.code],
+        (ownerErr,owned)=>{
+          if(ownerErr)return res.status(500).json({error:ownerErr.message});
+          if(!owned)return res.status(403).json({error:'You cannot delete a location outside your assigned points'});
+          continueDelete();
+        }
+      );
+    }
+    continueDelete();
   });
 });
 

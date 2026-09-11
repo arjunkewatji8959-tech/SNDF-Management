@@ -630,10 +630,15 @@
       // =====================================================
       // SECTION: LOCATION DISTRIBUTION / OWNERSHIP
       // =====================================================
+      // Keep these controls in page scope so the Save button can use them safely.
+      const assignmentStaff = $('assignmentStaff');
+      const assignmentLocations = $('assignmentLocations');
+      const ownershipRows = $('ownershipRows');
+
       async function loadAssignments() {
-        const staffSel = $('assignmentStaff');
-        const locSel = $('assignmentLocations');
-        const rows = $('ownershipRows');
+        const staffSel = assignmentStaff;
+        const locSel = assignmentLocations;
+        const rows = ownershipRows;
 
         if (!staffSel || !locSel || !rows) return;
 
@@ -701,8 +706,8 @@
 
       // Save one or more location assignments.
       $('saveAssignmentBtn').addEventListener('click', async () => {
-        const staffId = staffSel.value;
-        const codes = [...locSel.selectedOptions].map(option => option.value);
+        const staffId = assignmentStaff?.value || '';
+        const codes = assignmentLocations ? [...assignmentLocations.selectedOptions].map(option => option.value) : [];
 
         if (!staffId || !codes.length) {
           showMessage('Member aur kam se kam ek location select karein.', false);
