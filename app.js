@@ -321,7 +321,6 @@ function renderDaily(rows){
 function renderStaff(list){
  const groups={field_officer:'#fieldOfficerRows',officer:'#officerRows',supervisor:'#supervisorRows',guard:'#guardRows'};
  Object.entries(groups).forEach(([r,sel])=>{const b=$(sel);if(!b)return;let rows=list.filter(x=>x.role===r);if(!isAdminRole)rows=rows.filter(x=>x.staff_id===user.staff_id);b.innerHTML=rows.map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.post||label(x.role))}</td><td>${escape(x.department||'')}</td><td>₹${Number(x.salary||0)}</td><td>${escape(x.status||'active')}</td><td>${isAdminRole?`<button class="action danger" onclick="removeStaff(${x.id})">Delete</button>`:'View Only'}</td></tr>`).join('')||'<tr><td colspan="7">No members found.</td></tr>';});
- const adminBox=$('#adminRows');if(adminBox){const admins=list.filter(x=>x.role==='admin');adminBox.innerHTML=admins.map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.post||'Admin')}</td><td>${escape(x.status||'active')}</td><td><button class="action danger" onclick="removeStaff(${x.id})">Delete</button></td></tr>`).join('')||'<tr><td colspan="5">No Admin accounts found.</td></tr>';$('#adminMemberPanel')?.classList.toggle('hidden',user?.role!=='master_admin');}
  const legacy=$('#staffRows');if(legacy)legacy.innerHTML='';
 }
 // END SECTION: FUNCTION renderStaff
@@ -716,8 +715,10 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       delete d.reason_select; delete d.reason_custom;
     }
     if(form.dataset.type==='staff'){
-      // Only Admin and Master Admin can create members.
+      // Only Admin and Master Admin can create operational members.
       if(!['admin','master_admin'].includes(user?.role)) throw Error('Only Admin or Master Admin can create members');
+      // Admin accounts are intentionally removed from this Create Member UI.
+      if(String(d.role||'')==='admin') throw Error('Admin creation is disabled here.');
 
       const locationSelect=$('#createLocation');
       const selectedLocations=locationSelect ? [...locationSelect.selectedOptions].map(o=>String(o.value||'').trim()).filter(Boolean) : [];
@@ -746,7 +747,20 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       if(d.role==='admin' && user?.role==='master_admin') d.parent_id='adi123';
       if(!selectedLocations.length) throw Error('Select at least one Location Code');
       const created = await api('/staff',{method:'POST',body:JSON.stringify(d)});
-      window.__lastCreatedStaff = { staff_id: created.staff_id||d.staff_id, role: created.role||d.role, name: created.name||d.name, database_id: created.id };
+      window.__lastCreatedStaff = {
+        staff_id: created.staff_id||d.staff_id,
+        role: created.role||d.role,
+        name: created.name||d.name,
+        database_id: created.id,
+        post: created.post||d.post,
+        salary: created.salary??d.salary,
+        dob: created.dob||d.dob,
+        department: created.department||d.department,
+        location_code: created.location_code||d.location_code,
+        location_codes: created.location_codes||d.location_codes||[],
+        parent_id: created.parent_id||d.parent_id||'',
+        contact_number: created.contact_number||d.contact_number
+      };
     }
     if(form.dataset.type==='fine')await api('/fines',{method:'POST',body:JSON.stringify(d)});
     if(form.dataset.type==='advance')await api('/advances',{method:'POST',body:JSON.stringify(d)});
@@ -754,6 +768,20 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
     if(form.dataset.type==='help')await api('/help',{method:'POST',body:JSON.stringify(d)});
     const createdInfo=window.__lastCreatedStaff;
     msg(createdInfo ? `Member created ✓  Staff ID: ${createdInfo.staff_id}` : 'Saved successfully');
+    if(createdInfo){
+      const panel=$('#recentCreatedMemberPanel'), grid=$('#recentCreatedMemberGrid');
+      if(panel&&grid){
+        const locations=(createdInfo.location_codes||[]).length ? createdInfo.location_codes.join(', ') : (createdInfo.location_code||'—');
+        const detail=(labelText,value)=>`<div class=\"recent-created-item\"><span>${escape(labelText)}</span><b>${escape(value==null||value===''?'—':String(value))}</b></div>`;
+        grid.innerHTML=[
+          detail('Name',createdInfo.name), detail('Staff ID',createdInfo.staff_id), detail('Role',label(createdInfo.role)),
+          detail('Post',createdInfo.post), detail('Salary','₹'+(createdInfo.salary??0)), detail('Date of Birth',createdInfo.dob),
+          detail('Department',createdInfo.department), detail('Location Code',locations), detail('Parent ID',createdInfo.parent_id),
+          detail('Phone Number',createdInfo.contact_number), detail('Database ID',createdInfo.database_id)
+        ].join('');
+        panel.classList.remove('hidden');
+      }
+    }
     const createdRole=createdInfo?.role||d.role;
     delete window.__lastCreatedStaff;
     form.reset();
@@ -820,7 +848,7 @@ setupAttendanceFilters();
 $('#attendanceRoleFilter')?.addEventListener('change',()=>renderAttendance(window._attendanceRows||[]));
 $('#accountRoleFilter')?.addEventListener('change',()=>loadPayroll());
 $('#memberRoleFilter')?.addEventListener('change',()=>filterMemberLists());$('#createRole')?.addEventListener('change',()=>{ if(!isAdminRole)return; fillCreateParent(staff); });
-if(user?.role!=='master_admin'){ $('#createRole')?.querySelector('.master-only-option')?.remove(); $('#memberRoleFilter')?.querySelector('.master-only-option')?.remove(); }
+if(user?.role!=='master_admin'){ $('#createRole')?.querySelector('.master-only-option')?.remove();  }
 if(user?.role==='master_admin'){ const x=$('#dashboardRoleLabel'); if(x)x.textContent='SNDF MASTER ADMIN'; const note=document.querySelector('#staff .muted-note'); if(note)note.textContent='Master Admin can create Admin, Field Officer, Supervisor and Guard. Normal Admin cannot create another Admin.'; }
 
 // =====================================================

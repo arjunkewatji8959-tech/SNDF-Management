@@ -1157,7 +1157,6 @@
                   <option value="officer">Officer</option>
                   <option value="supervisor">Supervisor</option>
                   <option value="guard">Guard</option>
-                  <option value="admin" class="master-only-option">Admin (Master Admin Only)</option>
                 </select>
               </div>
 
@@ -1231,6 +1230,18 @@
             </form>
             <!-- END SECTION: CREATE MEMBER FORM -->
           </div>
+          <!-- SECTION: RECENTLY CREATED MEMBER -->
+          <div class="panel recent-created-panel hidden" id="recentCreatedMemberPanel" aria-live="polite">
+            <div class="recent-created-head">
+              <div>
+                <h3>Recently Created Member</h3>
+                <p class="muted-note">Create successful hone ke baad latest saved member ki complete details yahan dikhengi.</p>
+              </div>
+              <span class="recent-created-badge">Saved ✓</span>
+            </div>
+            <div class="recent-created-grid" id="recentCreatedMemberGrid"></div>
+          </div>
+          <!-- END SECTION: RECENTLY CREATED MEMBER -->
           <div class="panel">
             <div class="filter-row">
               <label class="filter-label">
@@ -1238,9 +1249,6 @@
                 <select id="memberRoleFilter">
                   <option value="all">
                     All Members
-                  </option>
-                  <option value="admin" class="master-only-option">
-                    Admin
                   </option>
                   <option value="field_officer">
                     Field Officer
@@ -1260,36 +1268,6 @@
             <p class="muted-note">
               Role select karne par sirf usi role ke added members ki list dikhegi.
             </p>
-          </div>
-          <div class="panel role-list-panel master-admin-list" id="adminMemberPanel" data-role-list="admin">
-            <h3>
-              Admin List — Master Admin Only
-            </h3>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>
-                      Name
-                    </th>
-                    <th>
-                      ID
-                    </th>
-                    <th>
-                      Post
-                    </th>
-                    <th>
-                      Status
-                    </th>
-                    <th>
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody id="adminRows">
-                </tbody>
-              </table>
-            </div>
           </div>
           <div class="role-lists">
             <div class="panel role-list-panel" data-role-list="officer">
