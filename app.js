@@ -338,57 +338,101 @@ function fillCreateParent(list){
   const locHint=$('#createLocationHint'), parentHint=$('#createParentHint'), hierarchyHint=$('#createHierarchyHint');
   if(!form||!roleSel||!parentSel||!locSel)return;
 
-  const roleVal=roleSel.value;
+  const roleVal=String(roleSel.value||'').trim();
   const isNormalAdmin=user?.role==='admin';
-  const locations=[...locSel.options].filter(o=>o.value).map(o=>o.value);
 
-  // Field Officer may have multiple assigned locations. All other roles use one location.
+  // Read the currently available location options before rebuilding the parent list.
+  const locations=[...locSel.options].filter(o=>String(o.value||'').trim()).map(o=>String(o.value).trim());
+
+  // Field Officer can own multiple locations. Every other operational role uses exactly one.
   if(roleVal==='field_officer'){
     locSel.multiple=true;
+    locSel.dataset.multi='true';
     locSel.size=Math.min(Math.max(locations.length,3),6);
-    if(locHint)locHint.textContent='Field Officer: one or more Location Codes can be selected (multi-location allowed).';
+    if(locHint)locHint.textContent='Field Officer: select one or more Location Codes. All selected locations will be assigned to this Field Officer.';
   }else{
     locSel.multiple=false;
+    delete locSel.dataset.multi;
     locSel.size=1;
     if(locHint)locHint.textContent='Select one Location Code.';
   }
 
-  // Parent rules for the normal Admin account.
+  // Re-read selections after the multiple/single mode is applied.
+  const selectedLocations=[...locSel.selectedOptions]
+    .map(o=>String(o.value||'').trim())
+    .filter(Boolean);
+  const selectedLocation=selectedLocations[0]||'';
+
   let parents=[];
+
+  // Admin is the mandatory parent for Field Officer and Officer.
   if(isNormalAdmin && ['field_officer','officer'].includes(roleVal)){
     parents=[user];
-  }else if(roleVal==='supervisor'){
-    const selected=[...locSel.selectedOptions].map(o=>o.value);
-    const loc=selected[0]||'';
-    parents=list.filter(s=>s.role==='field_officer' && s.status==='active' && (!loc || (s.assigned_locations||[]).includes(loc)));
-  }else if(roleVal==='guard'){
-    const loc=String(locSel.value||'');
-    parents=list.filter(s=>s.role==='supervisor' && s.status==='active' && (!loc || String(s.location_code||'')===loc));
-  }else if(!isNormalAdmin && ['field_officer','officer'].includes(roleVal)){
-    // Master Admin keeps its existing creation behavior; show active Admins as optional parents.
+  }
+  // Supervisor must use a Field Officer who owns the selected location.
+  else if(roleVal==='supervisor'){
+    parents=list.filter(s=>
+      s.role==='field_officer' &&
+      s.status==='active' &&
+      Array.isArray(s.assigned_locations) &&
+      selectedLocation &&
+      s.assigned_locations.includes(selectedLocation)
+    );
+  }
+  // Guard must use a Supervisor at the exact selected location.
+  else if(roleVal==='guard'){
+    parents=list.filter(s=>
+      s.role==='supervisor' &&
+      s.status==='active' &&
+      selectedLocation &&
+      String(s.location_code||'')===selectedLocation
+    );
+  }
+  // Master Admin's existing parent behavior is preserved.
+  else if(!isNormalAdmin && ['field_officer','officer'].includes(roleVal)){
     parents=list.filter(s=>s.role==='admin' && s.status==='active');
   }
 
   const requiredForAdmin=isNormalAdmin && roleVal!=='admin';
-  const labelText=roleVal==='supervisor'?'Select Field Officer Parent ID':roleVal==='guard'?'Select Supervisor Parent ID':
-    ['field_officer','officer'].includes(roleVal)?'Select Admin Parent ID':'Select Parent ID';
-  parentSel.innerHTML='<option value="">'+labelText+'</option>'+parents.map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${escape(s.staff_id)}${(s.assigned_locations||[]).length?' • '+escape(s.assigned_locations.join(', ')):s.location_code?' • '+escape(s.location_code):''}</option>`).join('');
+
+  // Always show the actual Parent Staff ID prominently in the option text.
+  const labelText =
+    roleVal==='supervisor' ? 'Select Field Officer Parent ID' :
+    roleVal==='guard' ? 'Select Supervisor Parent ID' :
+    ['field_officer','officer'].includes(roleVal) ? 'Select Admin Parent ID' :
+    'Select Parent ID';
+
+  parentSel.innerHTML='<option value="">'+labelText+'</option>'+
+    parents.map(s=>{
+      const id=escape(s.staff_id||'');
+      const name=escape(s.name||'');
+      const locs=Array.isArray(s.assigned_locations)&&s.assigned_locations.length
+        ? ' • '+escape(s.assigned_locations.join(', '))
+        : (s.location_code ? ' • '+escape(s.location_code) : '');
+      return `<option value="${id}">${id} — ${name}${locs}</option>`;
+    }).join('');
 
   if(requiredForAdmin){
     parentSel.required=true;
-    // For a normal Admin, the logged-in Admin is always the parent of FO/Officer.
+    parentSel.disabled=false;
+
+    // For a normal Admin, its own Staff ID is automatically the parent.
     if(['field_officer','officer'].includes(roleVal)){
-      parentSel.value=user.staff_id;
-      parentSel.disabled=false;
-      if(parentHint)parentHint.textContent=`Parent Admin ID: ${user.staff_id} (automatic)`;
+      parentSel.value=String(user?.staff_id||'');
+      if(parentHint)parentHint.textContent=`Parent Admin ID: ${user?.staff_id||'—'} (automatic)`;
     }else{
-      parentSel.disabled=false;
-      if(parentHint)parentHint.textContent='Parent ID is required.';
+      if(parentHint){
+        parentHint.textContent=parents.length
+          ? `Select Parent ID. ${parents.length} valid parent(s) available for Location ${selectedLocation||'—'}.`
+          : `No valid parent found for Location ${selectedLocation||'—'}. Create/assign the required parent first.`;
+      }
     }
   }else{
     parentSel.required=false;
     parentSel.disabled=false;
-    if(parentHint)parentHint.textContent='Select the correct parent according to the hierarchy.';
+    if(parentHint)parentHint.textContent=parents.length
+      ? 'Select the correct Parent ID according to the hierarchy.'
+      : 'Select the correct parent according to the hierarchy.';
   }
 
   if(hierarchyHint){
