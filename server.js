@@ -29,6 +29,39 @@ db.run('PRAGMA synchronous=NORMAL', err => { if (err) console.warn('SQLite synch
 
 db.configure('busyTimeout', 5000);
 
+// Repair legacy locations that were created with a blank Location Code.
+// This runs to completion BEFORE dbReady becomes true, so Railway cannot serve
+// the Admin panel with blank location-code options. Existing valid codes are untouched.
+function repairLegacyLocationCodes(done){
+  db.all(`SELECT id FROM locations WHERE TRIM(COALESCE(code,''))='' ORDER BY id`, [], (err, rows)=>{
+    if(err){ console.error('Legacy location-code check failed:', err.message); return done(err); }
+    if(!rows || !rows.length) return done(null);
+    let pending=rows.length, firstErr=null;
+    rows.forEach(row=>{
+      const generated='LOC'+String(row.id).padStart(3,'0');
+      db.run('UPDATE locations SET code=? WHERE id=?',[generated,row.id],e1=>{
+        if(e1) firstErr=firstErr||e1;
+        // Preserve legacy records that referenced the blank code when there is
+        // exactly one repaired legacy location. This avoids losing the old scope.
+        db.run(`UPDATE location_assignments SET location_code=? WHERE TRIM(COALESCE(location_code,''))=''`,[generated],e2=>{
+          if(e2) firstErr=firstErr||e2;
+          db.run(`UPDATE shift_schedules SET location_code=? WHERE TRIM(COALESCE(location_code,''))=''`,[generated],e3=>{
+            if(e3) firstErr=firstErr||e3;
+            db.run(`UPDATE staff SET location_code=? WHERE TRIM(COALESCE(location_code,''))='' AND role IN ('admin','field_officer','officer','supervisor','guard')`,[generated],e4=>{
+              if(e4) firstErr=firstErr||e4;
+              if(--pending===0){
+                if(firstErr) console.error('Legacy location-code repair completed with error:',firstErr.message);
+                else console.log(`Repaired ${rows.length} legacy blank Location Code(s).`);
+                done(firstErr);
+              }
+            });
+          });
+        });
+      });
+    });
+  });
+}
+
 app.use(cors());
 app.use(express.json({limit:'12mb'}));
 app.use(express.urlencoded({extended:true}));
@@ -223,32 +256,6 @@ db.serialize(()=>{
   db.run(`CREATE INDEX IF NOT EXISTS idx_attendance_staff_date ON attendance(staff_id,date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_location_assignments_staff ON location_assignments(staff_id,active)`);
 
-  // LEGACY LOCATION-CODE REPAIR
-  // Older SNDF databases may contain a location with an empty code. The UI cannot
-  // submit that option because the code is the stable key used by assignments.
-  // Give legacy blank-code locations a deterministic code before the app becomes ready.
-  db.all(`SELECT id FROM locations WHERE TRIM(COALESCE(code,''))='' ORDER BY id`, [], (legacyErr, legacyRows) => {
-    if (legacyErr) {
-      console.error('Legacy location-code check failed:', legacyErr.message);
-    } else if (legacyRows && legacyRows.length) {
-      let pending = legacyRows.length;
-      legacyRows.forEach(row => {
-        const generated = 'LOC' + String(row.id).padStart(3,'0');
-        db.run('UPDATE locations SET code=? WHERE id=?', [generated, row.id], (updateErr) => {
-          if (updateErr) console.error('Legacy location code repair failed:', updateErr.message);
-          // If the old location was referenced with an empty code, keep those records
-          // connected to the repaired legacy location. This is intentionally scoped to
-          // blank-code records only and never changes valid location codes.
-          db.run("UPDATE staff SET location_code=? WHERE TRIM(COALESCE(location_code,''))=''", [generated]);
-          db.run("UPDATE location_assignments SET location_code=? WHERE TRIM(COALESCE(location_code,''))=''", [generated]);
-          db.run("UPDATE shift_schedules SET location_code=? WHERE TRIM(COALESCE(location_code,''))=''", [generated], () => {
-            if (--pending === 0) console.log(`Repaired ${legacyRows.length} legacy blank Location Code(s).`);
-          });
-        });
-      });
-    }
-  });
-
   db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active)
     SELECT staff_id,location_code,'system-migration',1 FROM staff
     WHERE role IN ('admin','field_officer') AND TRIM(COALESCE(location_code,''))<>''`);
@@ -268,8 +275,14 @@ db.serialize(()=>{
         console.error('Director bootstrap failed:', masterErr.message);
         return;
       }
-      console.log('Director ready: adi123');
-      dbReady = true;
+      repairLegacyLocationCodes(repairErr=>{
+        if(repairErr){
+          console.error('Database startup repair failed:', repairErr.message);
+          return;
+        }
+        console.log('Director ready: adi123');
+        dbReady = true;
+      });
     }
   );
 
@@ -1823,13 +1836,18 @@ function canUseLocation(req, code, cb){
 // END SECTION: LOCATION SCOPE HELPERS
 
 app.get('/api/locations', auth, (req, res) => {
-  if(req.user.role==='master_admin') return all('SELECT * FROM locations ORDER BY code ASC',[],res);
+  // Safety net for an older database: never return a blank Location Code to the UI.
+  // Any legacy blank code is repaired before the location list is sent.
+  repairLegacyLocationCodes(err=>{
+    if(err) return res.status(500).json({error:'Unable to repair Location Codes: '+err.message});
+    if(req.user.role==='master_admin') return all('SELECT * FROM locations WHERE active=1 ORDER BY code ASC',[],res);
   if(['admin','field_officer'].includes(req.user.role)) return assignedLocations(req.user.staff_id,(err,rows)=>{
     if(err)return res.status(500).json({error:err.message});
     res.json(rows||[]);
   });
-  if(req.user.location_code) return all('SELECT * FROM locations WHERE code=? AND active=1 ORDER BY code ASC',[req.user.location_code],res);
-  res.json([]);
+    if(req.user.location_code) return all('SELECT * FROM locations WHERE code=? AND active=1 ORDER BY code ASC',[req.user.location_code],res);
+    res.json([]);
+  });
 });
 
 // LOCATION ASSIGNMENTS - only Director/Admin can distribute points.
