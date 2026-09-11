@@ -1193,6 +1193,53 @@ app.post('/api/attendance',auth,(req,res)=>{
     });
   });
 });
+// =====================================================
+// SECTION: ADMIN MARK PRESENT BY STAFF ID
+// Admin/Master Admin can manually mark a staff member Present using Staff ID.
+// This creates a completed attendance record without requiring a camera photo.
+// =====================================================
+app.post('/api/attendance/admin-mark-present',auth,roles('admin','master_admin'),(req,res)=>{
+  const x=req.body||{};
+  const targetId=String(x.staff_id||'').trim();
+  const date=/^\d{4}-\d{2}-\d{2}$/.test(String(x.date||''))?String(x.date):new Date().toISOString().slice(0,10);
+  if(!targetId)return res.status(400).json({error:'Staff ID is required'});
+  get('SELECT * FROM staff WHERE staff_id=? LIMIT 1',[targetId],(err,s)=>{
+    if(err)return res.status(500).json({error:err.message});
+    if(!s)return res.status(404).json({error:'Staff ID not found'});
+    if(!['admin','field_officer','officer','supervisor','guard'].includes(s.role))return res.status(400).json({error:'This role cannot be marked through staff attendance'});
+    const requestedLocation=String(x.location_code||'').trim();
+    const locationCode=requestedLocation||String(s.location_code||'').trim();
+    if(!locationCode)return res.status(400).json({error:'Staff has no Location Code. Enter Location Code manually.'});
+    get('SELECT duty_hours FROM locations WHERE code=? AND active=1',[locationCode],(le,loc)=>{
+      if(le)return res.status(500).json({error:le.message});
+      const dutyHours=Number(loc?.duty_hours)===8?8:12;
+      const allowed=shiftForDutyHours(dutyHours);
+      const requestedShift=String(x.shift||'').trim();
+      const chooseShift=(saved)=>{
+        const shift=String(saved?.shift||requestedShift||allowed[0]);
+        const effectiveDuty=Number(saved?.duty_hours)===8?8:dutyHours;
+        if(!isShiftAllowedForDuty(shift,effectiveDuty))return res.status(400).json({error:`Invalid shift for ${effectiveDuty}-hour location. Allowed: ${shiftForDutyHours(effectiveDuty).join(', ')}`});
+        get('SELECT id FROM attendance WHERE staff_id=? AND date=? AND shift=? LIMIT 1',[targetId,date,shift],(de,existing)=>{
+          if(de)return res.status(500).json({error:de.message});
+          if(existing)return res.status(409).json({error:`${shift} attendance is already marked for ${targetId} on ${date}`});
+          const now=new Date(),time=now.toTimeString().slice(0,8),iso=now.toISOString();
+          run(`INSERT INTO attendance(staff_id,name,date,photo,location,shift,duty_hours,check_in,check_in_at,check_out,hours_worked,attendance_status)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [s.staff_id,s.name,date,'',locationCode,shift,effectiveDuty,time,iso,time,0,'Present - Admin Marked'],res,row=>{
+              audit(req.user,'ADMIN_MARK_PRESENT',s.staff_id,`${shift}; ${effectiveDuty} hour duty; date=${date}; location=${locationCode}`);
+              res.status(201).json({id:row.lastID,staff_id:s.staff_id,name:s.name,date,shift,duty_hours:effectiveDuty,message:`${s.name} (${s.staff_id}) marked Present`});
+            });
+        });
+      };
+      getEffectiveShift(targetId,locationCode,date,(se,saved)=>{
+        if(se)return res.status(500).json({error:se.message});
+        chooseShift(saved);
+      });
+    });
+  });
+});
+// END SECTION: ADMIN MARK PRESENT BY STAFF ID
+
 app.put('/api/attendance/:id/checkout',auth,(req,res)=>{
   const lookup=(cb)=>{ if(req.params.id==='current') return get('SELECT a.*,s.role FROM attendance a LEFT JOIN staff s ON s.staff_id=a.staff_id WHERE a.staff_id=? AND a.check_out IS NULL ORDER BY a.id DESC LIMIT 1',[req.user.staff_id],cb); get('SELECT a.*,s.role FROM attendance a LEFT JOIN staff s ON s.staff_id=a.staff_id WHERE a.id=?',[req.params.id],cb); };
   lookup((err,row)=>{

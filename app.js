@@ -130,7 +130,7 @@ if(role==='field_officer'){
     .join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';
 }
 // END SECTION: FIELD OFFICER SUPERVISOR LIST
-window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();if(role==='officer')loadOfficerRelieverNotifications();}catch(e){console.log(e.message)}}
+window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);fillAdminPresentTargets(s);setupAdminMarkPresent();renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();if(role==='officer')loadOfficerRelieverNotifications();}catch(e){console.log(e.message)}}
 
 // END SECTION: FUNCTION refresh
 
@@ -356,6 +356,36 @@ async function makePayment(staffId,amount){if(!confirm(`Pay ₹${amount} to ${st
 // =====================================================
 // SECTION: FUNCTION fillTargets
 // =====================================================
+// =====================================================
+// SECTION: ADMIN MARK PRESENT UI
+// =====================================================
+function fillAdminPresentTargets(list){
+  const dl=$('#adminPresentStaffList');
+  if(dl)dl.innerHTML=list.filter(s=>['admin','field_officer','officer','supervisor','guard'].includes(s.role)).map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${label(s.role)}</option>`).join('');
+}
+function fillAdminPresentLocations(){
+  const dl=$('#adminPresentLocationList');
+  if(dl)dl.innerHTML=[...new Set((locationConfigs?Object.keys(locationConfigs):[]).filter(Boolean))].map(c=>`<option value="${escape(c)}"></option>`).join('');
+}
+function setupAdminMarkPresent(){
+  const form=$('#adminMarkPresentForm');
+  if(!form||!isAdminRole)return;
+  const date=$('#adminPresentDate');
+  if(date&&!date.value)date.value=new Date().toISOString().slice(0,10);
+  fillAdminPresentLocations();
+  form.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const d=Object.fromEntries(new FormData(form));
+    try{
+      const out=await api('/attendance/admin-mark-present',{method:'POST',body:JSON.stringify(d)});
+      msg(out.message||'Present marked successfully ✓');
+      form.reset(); if(date)date.value=d.date||new Date().toISOString().slice(0,10);
+      refresh();
+    }catch(err){alert(err.message)}
+  });
+}
+// END SECTION: ADMIN MARK PRESENT UI
+
 function fillTargets(list){const sel=$('#fineTarget');if(sel)sel.innerHTML='<option value="">Select Officer / Guard / Supervisor</option>'+list.filter(s=>['guard','supervisor'].includes(s.role)).map(s=>`<option value="${s.staff_id}">${escape(s.name)} — ${s.staff_id} (${label(s.role)})</option>`).join('')}
 // END SECTION: FUNCTION fillTargets
 

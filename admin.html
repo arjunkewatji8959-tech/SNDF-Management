@@ -740,6 +740,39 @@
           <h2>
             Daily Attendance
           </h2>
+          <div class="panel" id="adminMarkPresentPanel">
+            <h3>Mark Present by Staff ID</h3>
+            <p class="muted-note">Admin / Master Admin kisi bhi permitted staff ki ID dal kar attendance ko Present mark kar sakte hain. Is manual entry mein camera photo zaroori nahi hai; record mein “Admin Marked Present” status save hoga.</p>
+            <form id="adminMarkPresentForm" class="download-toolbar">
+              <label>
+                Staff ID
+                <input id="adminPresentStaffId" name="staff_id" list="adminPresentStaffList" placeholder="Enter Staff ID" required autocomplete="off">
+              </label>
+              <datalist id="adminPresentStaffList"></datalist>
+              <label>
+                Attendance Date
+                <input id="adminPresentDate" name="date" type="date" required>
+              </label>
+              <label>
+                Shift
+                <select id="adminPresentShift" name="shift">
+                  <option value="">Auto / Effective Shift</option>
+                  <option value="Morning Shift">Morning Shift</option>
+                  <option value="Evening Shift">Evening Shift</option>
+                  <option value="Night Shift 8H">Night Shift 8H</option>
+                  <option value="Day Shift">Day Shift</option>
+                  <option value="Night Shift">Night Shift</option>
+                </select>
+              </label>
+              <label>
+                Location Code (optional)
+                <input id="adminPresentLocation" name="location_code" list="adminPresentLocationList" placeholder="Auto from staff profile">
+              </label>
+              <datalist id="adminPresentLocationList"></datalist>
+              <button class="action success" type="submit">✓ Mark Present</button>
+            </form>
+          </div>
+          <!-- END SECTION: ADMIN MARK PRESENT BY STAFF ID -->
           <div class="panel">
             <div class="download-toolbar">
               <label>
