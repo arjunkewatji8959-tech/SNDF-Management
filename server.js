@@ -202,17 +202,10 @@ db.serialize(()=>{
     duty_shift TEXT NOT NULL DEFAULT '12_hour',
     duty_hours INTEGER NOT NULL DEFAULT 12,
     active INTEGER NOT NULL DEFAULT 1,
+    is_main_office INTEGER NOT NULL DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   )`);
-  // Main Office flag: Field Officers can check in/out only at the designated Main Office.
-  // Safe migration for existing SQLite databases.
-  db.all('PRAGMA table_info(locations)',[],(tableErr,cols)=>{
-    if(!tableErr && !(cols||[]).some(c=>c.name==='is_main_office')){
-      db.run('ALTER TABLE locations ADD COLUMN is_main_office INTEGER NOT NULL DEFAULT 0');
-    }
-  });
-
   db.run(`CREATE TABLE IF NOT EXISTS shift_schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     staff_id TEXT NOT NULL,
