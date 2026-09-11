@@ -7,7 +7,6 @@
 - Audit CSV download.
 - Monthly payroll CSV report.
 - Monthly report summary for attendance, duty days, hours, fines and payments.
-- Optional GPS geofence for LOC-01/02/03.
 - Morning Shift auto-detection (06:00–08:00), while Day/Night remain 12-hour shifts.
 - Existing mobile Camera + Captured Photo side-by-side layout preserved.
 
