@@ -474,17 +474,38 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
           [role,String(x.name).trim(),staffId,hashed,x.post||role,x.salary||0,location,parent,x.dob||'',x.department||'',x.contact_number||'',x.dp||'',
            x.age||null,x.height||null,x.weight||null,x.blood_group||'',x.qualification||'',x.physical_level||'',x.medical_level||'',x.skills||'',x.police_verification||'',x.driving_license||'',x.training_details||'',x.work_experience||'',x.photo_front||'',x.photo_back||'',x.photo_left||'',x.photo_right||'',Number(x.is_reliever)?1:0],
           res,row=>{
-            audit(req.user,'STAFF_CREATED',staffId,`${role} ${x.name} created; parent=${parent||'none'}; location=${location||'ALL_LOCATIONS'}`);
-            res.status(201).json({id:row.lastID,message:'Staff created successfully'});
+            // Save an initial location assignment at account creation when a location was selected.
+            // This keeps the new Field Officer/Admin immediately visible in Location Distribution.
+            const finishCreation=()=>{
+              audit(req.user,'STAFF_CREATED',staffId,`${role} ${x.name} created; parent=${parent||'none'}; location=${location||'ALL_LOCATIONS'}`);
+              res.status(201).json({id:row.lastID,staff_id:staffId,role,name:String(x.name).trim(),message:`Staff created successfully. Staff ID: ${staffId}`});
+            };
+
+            if(location && ['admin','field_officer'].includes(role)){
+              db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active) VALUES(?,?,?,1)`,
+                [staffId,location,req.user.staff_id],()=>finishCreation());
+            } else {
+              finishCreation();
+            }
           });
       });
     };
 
-    // Field Officer: parent/location are optional. If location is supplied, validate it.
+    // Field Officer: parent is optional. A selected location is optional, but when supplied
+    // it must be active and within the creator's permitted locations. The initial assignment
+    // is saved by validateAndCreate() so the member appears immediately in Location Distribution.
     if(role==='field_officer'){
-      // Field Officer can receive multiple locations later from Location Management.
-      // Do not force a single location_code during account creation.
-      return validateAndCreate();
+      if(!location)return validateAndCreate();
+      get('SELECT code FROM locations WHERE code=? AND active=1',[location],(le,lr)=>{
+        if(le)return res.status(500).json({error:le.message});
+        if(!lr)return res.status(400).json({error:'Invalid or inactive Location Code. Create the location first.'});
+        canUseLocation(req,location,(ce,allowed)=>{
+          if(ce)return res.status(500).json({error:ce.message});
+          if(!allowed)return res.status(403).json({error:'You cannot assign this location to a new Field Officer'});
+          validateAndCreate();
+        });
+      });
+      return;
     }
 
     // Supervisor: parent MUST be a Field Officer and location MUST be active.
@@ -1819,7 +1840,25 @@ app.post('/api/locations', adminOnly, (req, res) => {
     [String(code).trim(), String(name).trim(), String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty],
     function(err) {
       if (err) return res.status(400).json({ error: err.message });
-      res.json({ ok: true, id: this.lastID });
+      const locationId = this.lastID;
+      const codeValue = String(code).trim();
+
+      // An Admin owns locations it creates, so the new point is immediately usable
+      // in Location Distribution and normal Admin location selectors.
+      if (req.user.role === 'admin') {
+        return db.run(
+          `INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active) VALUES(?,?,?,1)`,
+          [req.user.staff_id, codeValue, req.user.staff_id],
+          assignErr => {
+            if (assignErr) return res.status(500).json({ error: assignErr.message });
+            audit(req.user,'LOCATION_CREATED',codeValue,`${String(name).trim()} • ${duty}h`);
+            res.json({ ok: true, id: locationId, code: codeValue, message: 'Location saved and assigned to Admin' });
+          }
+        );
+      }
+
+      audit(req.user,'LOCATION_CREATED',codeValue,`${String(name).trim()} • ${duty}h`);
+      res.json({ ok: true, id: locationId, code: codeValue, message: 'Location saved successfully' });
     }
   );
 });
@@ -1831,22 +1870,51 @@ app.put('/api/locations/:id', adminOnly, (req, res) => {
   if (!code || !name || !duty || !Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(radius) || radius <= 0) {
     return res.status(400).json({ error: 'Code, name, latitude, longitude, valid radius and duty shift are required' });
   }
-  db.run(
-    `UPDATE locations SET code=?,name=?,address=?,latitude=?,longitude=?,radius_meters=?,duty_shift=?,duty_hours=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-    [String(code).trim(), String(name).trim(), String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty, active ? 1 : 0, req.params.id],
-    function(err) {
-      if (err) return res.status(400).json({ error: err.message });
-      if (!this.changes) return res.status(404).json({ error: 'Location not found' });
-      res.json({ ok: true });
-    }
-  );
+  const newCode = String(code).trim();
+
+  db.get('SELECT code FROM locations WHERE id=?',[req.params.id],(findErr,existing)=>{
+    if(findErr)return res.status(500).json({error:findErr.message});
+    if(!existing)return res.status(404).json({error:'Location not found'});
+
+    db.run(
+      `UPDATE locations SET code=?,name=?,address=?,latitude=?,longitude=?,radius_meters=?,duty_shift=?,duty_hours=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+      [newCode, String(name).trim(), String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty, active ? 1 : 0, req.params.id],
+      function(err) {
+        if (err) return res.status(400).json({ error: err.message });
+        if (!this.changes) return res.status(404).json({ error: 'Location not found' });
+
+        // Keep all existing ownership records connected if the location code changes.
+        if(existing.code!==newCode){
+          db.run('UPDATE location_assignments SET location_code=? WHERE location_code=?',[newCode,existing.code],assignmentErr=>{
+            if(assignmentErr)return res.status(500).json({error:assignmentErr.message});
+            db.run('UPDATE shift_schedules SET location_code=? WHERE location_code=?',[newCode,existing.code],()=>{});
+            audit(req.user,'LOCATION_UPDATED',newCode,`${existing.code} → ${newCode}`);
+            res.json({ ok: true, code:newCode });
+          });
+        } else {
+          audit(req.user,'LOCATION_UPDATED',newCode,'Location details updated');
+          res.json({ ok: true, code:newCode });
+        }
+      }
+    );
+  });
 });
 
 app.delete('/api/locations/:id', adminOnly, (req, res) => {
-  db.run('DELETE FROM locations WHERE id=?', [req.params.id], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!this.changes) return res.status(404).json({ error: 'Location not found' });
-    res.json({ ok: true });
+  db.get('SELECT code FROM locations WHERE id=?',[req.params.id],(findErr,existing)=>{
+    if(findErr)return res.status(500).json({error:findErr.message});
+    if(!existing)return res.status(404).json({error:'Location not found'});
+
+    db.serialize(()=>{
+      db.run('DELETE FROM location_assignments WHERE location_code=?',[existing.code]);
+      db.run('DELETE FROM shift_schedules WHERE location_code=?',[existing.code]);
+      db.run('DELETE FROM locations WHERE id=?',[req.params.id],function(err){
+        if(err)return res.status(500).json({error:err.message});
+        if(!this.changes)return res.status(404).json({error:'Location not found'});
+        audit(req.user,'LOCATION_DELETED',existing.code,'Location and related assignments removed');
+        res.json({ok:true});
+      });
+    });
   });
 });
 

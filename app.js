@@ -632,13 +632,18 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
         throw Error(`Location Code is required for ${d.role}`);
       if(['supervisor','guard'].includes(d.role) && !String(d.parent_id||'').trim())
         throw Error(`Parent ID is required for ${d.role}`);
-      await api('/staff',{method:'POST',body:JSON.stringify(d)});
+      const created = await api('/staff',{method:'POST',body:JSON.stringify(d)});
+      window.__lastCreatedStaff = { staff_id: d.staff_id, role: d.role, name: d.name, database_id: created.id };
     }
     if(form.dataset.type==='fine')await api('/fines',{method:'POST',body:JSON.stringify(d)});
     if(form.dataset.type==='advance')await api('/advances',{method:'POST',body:JSON.stringify(d)});
     if(form.dataset.type==='notice')await api('/notices',{method:'POST',body:JSON.stringify(d)});
     if(form.dataset.type==='help')await api('/help',{method:'POST',body:JSON.stringify(d)});
-    msg('Saved successfully');form.reset();refresh()
+    const createdInfo=window.__lastCreatedStaff;
+    msg(createdInfo ? `Member created ✓  Staff ID: ${createdInfo.staff_id}` : 'Saved successfully');
+    delete window.__lastCreatedStaff;
+    form.reset();
+    refresh()
   }catch(err){alert(err.message)}
 }));
 $('#pointTransferForm')?.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{await api('/point-transfers',{method:'POST',body:JSON.stringify(d)});msg('Point transfer request sent to Admin');e.target.reset();loadPointTransfers();}catch(err){alert(err.message)}});
