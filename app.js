@@ -754,9 +754,13 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
     if(form.dataset.type==='help')await api('/help',{method:'POST',body:JSON.stringify(d)});
     const createdInfo=window.__lastCreatedStaff;
     msg(createdInfo ? `Member created ✓  Staff ID: ${createdInfo.staff_id}` : 'Saved successfully');
+    const createdRole=createdInfo?.role||d.role;
     delete window.__lastCreatedStaff;
     form.reset();
-    refresh()
+    const memberFilter=$('#memberRoleFilter');
+    if(memberFilter){ memberFilter.value=createdRole||'all'; }
+    await refresh();
+    filterMemberLists();
   }catch(err){alert(err.message)}
 }));
 $('#pointTransferForm')?.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{await api('/point-transfers',{method:'POST',body:JSON.stringify(d)});msg('Point transfer request sent to Admin');e.target.reset();loadPointTransfers();}catch(err){alert(err.message)}});
@@ -816,7 +820,7 @@ setupAttendanceFilters();
 $('#attendanceRoleFilter')?.addEventListener('change',()=>renderAttendance(window._attendanceRows||[]));
 $('#accountRoleFilter')?.addEventListener('change',()=>loadPayroll());
 $('#memberRoleFilter')?.addEventListener('change',()=>filterMemberLists());$('#createRole')?.addEventListener('change',()=>{ if(!isAdminRole)return; fillCreateParent(staff); });
-if(user?.role!=='master_admin'){ $('#createRole')?.querySelector('.master-only-option')?.remove(); }
+if(user?.role!=='master_admin'){ $('#createRole')?.querySelector('.master-only-option')?.remove(); $('#memberRoleFilter')?.querySelector('.master-only-option')?.remove(); }
 if(user?.role==='master_admin'){ const x=$('#dashboardRoleLabel'); if(x)x.textContent='SNDF MASTER ADMIN'; const note=document.querySelector('#staff .muted-note'); if(note)note.textContent='Master Admin can create Admin, Field Officer, Supervisor and Guard. Normal Admin cannot create another Admin.'; }
 
 // =====================================================
@@ -825,7 +829,19 @@ if(user?.role==='master_admin'){ const x=$('#dashboardRoleLabel'); if(x)x.textCo
 
 // =====================================================
 
-function filterMemberLists(){const role=$('#memberRoleFilter')?.value||'field_officer';document.querySelectorAll('[data-role-list]').forEach(panel=>panel.classList.toggle('hidden',panel.dataset.roleList!==role));}
+function filterMemberLists(){
+  const selected=$('#memberRoleFilter')?.value||'all';
+  const master=user?.role==='master_admin';
+  document.querySelectorAll('[data-role-list]').forEach(panel=>{
+    const panelRole=panel.dataset.roleList;
+    const isAdminPanel=panelRole==='admin';
+    // Admin list is visible only to Master Admin, but it also follows the role filter.
+    const allowed=(!isAdminPanel || master) && (selected==='all' || panelRole===selected);
+    panel.classList.toggle('hidden',!allowed);
+  });
+  const adminPanel=$('#adminMemberPanel');
+  if(adminPanel && !master) adminPanel.classList.add('hidden');
+}
 
 // END SECTION: FUNCTION filterMemberLists
 

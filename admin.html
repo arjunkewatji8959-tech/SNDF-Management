@@ -1236,8 +1236,17 @@
               <label class="filter-label">
                 Member List
                 <select id="memberRoleFilter">
+                  <option value="all">
+                    All Members
+                  </option>
+                  <option value="admin" class="master-only-option">
+                    Admin
+                  </option>
                   <option value="field_officer">
                     Field Officer
+                  </option>
+                  <option value="officer">
+                    Officer
                   </option>
                   <option value="supervisor">
                     Supervisor
@@ -1252,7 +1261,7 @@
               Role select karne par sirf usi role ke added members ki list dikhegi.
             </p>
           </div>
-          <div class="panel role-list-panel master-admin-list" id="adminMemberPanel">
+          <div class="panel role-list-panel master-admin-list" id="adminMemberPanel" data-role-list="admin">
             <h3>
               Admin List — Master Admin Only
             </h3>
