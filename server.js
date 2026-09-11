@@ -561,9 +561,11 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
     if(!parent)return res.status(400).json({error:`Parent ID is required for ${role}`});
   }
 
-  // All created members must have at least one active Location. Field Officer/Admin may have multiple;
-  // Officer/Supervisor/Guard use exactly one working location.
-  if(!requestedLocations.length)return res.status(400).json({error:`Location Code is required for ${role}`});
+  // Field Officer location is optional at creation time: it is a management scope,
+  // not the attendance point. The Field Officer checks in/out only at Main Office.
+  // Admin/Field Officer locations can be assigned later through Location Distribution.
+  if(role!=='field_officer' && !requestedLocations.length)
+    return res.status(400).json({error:`Location Code is required for ${role}`});
   if(['officer','supervisor','guard'].includes(role) && requestedLocations.length!==1)
     return res.status(400).json({error:`${role} can use only one Location Code`});
 
@@ -654,6 +656,10 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
       next();
     };
 
+    // No location is required for a new Field Officer. If a manual initial location
+    // was entered, validate and assign it; otherwise create the officer with no scope
+    // and let Admin/Director assign locations later.
+    if(role==='field_officer' && requestedLocations.length===0) return validateParent(()=>createRecord());
     validateParent(parentRow=>validateLocations(()=>validateRoleLocation(parentRow,createRecord)));
   });
 });

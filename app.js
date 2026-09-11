@@ -333,32 +333,38 @@ function renderStaff(list){
 function fillCreateParent(list){
   const form=$('form[data-type="staff"]');
   const roleSel=form?.querySelector('select[name="role"]');
-  const locSel=$('#createLocation'), parentSel=$('#createParent');
+  const locSel=$('#createLocation'), locManual=$('#createLocationManual'), locList=$('#createLocationOptions'), parentSel=$('#createParent');
   const locHint=$('#createLocationHint'), parentHint=$('#createParentHint'), hierarchyHint=$('#createHierarchyHint');
-  if(!form||!roleSel||!parentSel||!locSel)return;
+  if(!form||!roleSel||!parentSel||(!locSel&&!locManual))return;
 
   const roleVal=String(roleSel.value||'').trim();
   const isMaster=user?.role==='master_admin';
   const isNormalAdmin=user?.role==='admin';
-  const locations=[...locSel.options].filter(o=>String(o.value||'').trim()).map(o=>String(o.value).trim());
+  const locations=locSel ? [...locSel.options].filter(o=>String(o.value||'').trim()).map(o=>String(o.value).trim()) : [];
 
-  // Admin may start with multiple locations. Field Officer is created with ONE
-  // initial location; additional field locations are assigned later from Location Distribution.
-  const multi=['admin'].includes(roleVal);
-  locSel.multiple=multi;
-  locSel.size=multi ? Math.min(Math.max(locations.length,3),6) : 1;
-  if(locHint)locHint.textContent=multi
-    ? `${label(roleVal)}: select one or more active Location Codes.`
-    : (roleVal==='field_officer'
-      ? 'Select one initial Location Code. Additional locations can be assigned later from Location Distribution.'
-      : 'Select exactly one active Location Code.');
-
-  if(!multi && locSel.selectedOptions.length>1){
-    const first=locSel.selectedOptions[0];
-    [...locSel.options].forEach(o=>o.selected=false);
-    if(first)first.selected=true;
+  // Field Officer: location is NOT required on creation. It is a management
+  // assignment, not the attendance point. Use a text box with datalist suggestions.
+  // Field Officer Check-In/Check-Out is always handled by the Main Office.
+  if(roleVal==='field_officer' && locManual){
+    if(locSel){locSel.style.display='none';locSel.disabled=true;locSel.required=false;}
+    locManual.style.display='block';locManual.disabled=false;locManual.required=false;
+    if(locList) locList.innerHTML=locations.map(code=>{
+      const o=[...((locSel&&locSel.options)||[])].find(x=>String(x.value)===code);
+      return `<option value="${escape(code)}">${escape(o?.textContent||code)}</option>`;
+    }).join('');
+    if(locHint)locHint.textContent='Type a Location Code if you want an initial location. You can assign multiple locations later from Location Distribution. Field Officer attendance is only at Main Office.';
+  }else if(locSel){
+    locSel.style.display='block';locSel.disabled=false;locSel.required=true;
+    if(locManual){locManual.style.display='none';locManual.disabled=true;locManual.required=false;}
+    locSel.multiple=['admin'].includes(roleVal);
+    locSel.size=locSel.multiple ? Math.min(Math.max(locations.length,3),6) : 1;
+    if(locHint)locHint.textContent=locSel.multiple
+      ? `${label(roleVal)}: select one or more active Location Codes.`
+      : 'Select exactly one active Location Code.';
   }
-  const selected=[...locSel.selectedOptions].map(o=>String(o.value||'').trim()).filter(Boolean);
+
+  const manualLocation=roleVal==='field_officer' ? String(locManual?.value||'').trim() : '';
+  const selected=roleVal==='field_officer' ? (manualLocation?[manualLocation]:[]) : [...(locSel?.selectedOptions||[])].map(o=>String(o.value||'').trim()).filter(Boolean);
   const selectedLocation=selected[0]||'';
   let parents=[];
 
@@ -582,11 +588,12 @@ function populateLocationSelects(){
   const options=rows.map(x=>`<option value="${escape(x.code)}">${escape(x.code)} — ${escape(x.name)} (${Number(x.duty_hours)===8?8:12} Hours)</option>`).join('');
   const create=$('#createLocation');
   if(create){
-    // Preserve all selected locations when Field Officer multi-location mode is active.
     const cur=[...create.selectedOptions].map(o=>o.value).filter(Boolean);
     create.innerHTML='<option value="">Select Location</option>'+options;
     cur.forEach(code=>{const opt=[...create.options].find(o=>o.value===code);if(opt)opt.selected=true;});
   }
+  const createList=$('#createLocationOptions');
+  if(createList) createList.innerHTML=rows.map(x=>`<option value="${escape(x.code)}">${escape(x.code)} — ${escape(x.name||'')} (${Number(x.duty_hours)===8?8:12} Hours)</option>`).join('');
   const rel=$('#relieverLocation'); if(rel){const cur=rel.value;rel.innerHTML='<option value="">Select Location</option>'+options; if(rows.some(x=>x.code===cur))rel.value=cur;}
   const point=$('#pointUpdateLocationFilter'); if(point){const cur=point.value;point.innerHTML='<option value="all">All Locations</option>'+options; if(rows.some(x=>x.code===cur))point.value=cur;}
   const profile=$('#profileLocationFilter'); if(profile){const cur=profile.value;profile.innerHTML='<option value="all">All Locations</option>'+options; if(rows.some(x=>x.code===cur))profile.value=cur;}
@@ -780,20 +787,23 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       if(!['admin','master_admin'].includes(user?.role)) throw Error('Only Admin or Director can create members');
 
       const locationSelect=$('#createLocation');
-      // Read the selected option directly. Field Officer uses one initial location;
-      // the option value is the stable Location Code repaired/generated by the backend.
-      const selectedLocations=locationSelect ? [...locationSelect.selectedOptions].map(o=>String(o.value||'').trim()).filter(Boolean) : [];
-      if(!selectedLocations.length && locationSelect?.value) selectedLocations.push(String(locationSelect.value).trim());
+      const locationManual=$('#createLocationManual');
+      const isFieldOfficer=d.role==='field_officer';
+      // Field Officer location is a MANUAL optional field. Existing active locations
+      // appear only as datalist suggestions; no selection is required.
+      const selectedLocations=isFieldOfficer
+        ? (String(locationManual?.value||'').trim() ? [String(locationManual.value).trim()] : [])
+        : (locationSelect ? [...locationSelect.selectedOptions].map(o=>String(o.value||'').trim()).filter(Boolean) : []);
       d.location_codes=selectedLocations;
-      // Keep the legacy single location_code field for APIs/reports that use it.
-      d.location_code=selectedLocations[0]||String(locationSelect?.value||'').trim();
+      d.location_code=selectedLocations[0]||'';
+      delete d.location_code_manual;
       // Field Officer and Officer created by a normal Admin always belong to that Admin.
       if(user?.role==='admin' && ['field_officer','officer'].includes(d.role)) d.parent_id=user.staff_id;
 
       // Normal Admin must create every operational role with Parent ID + Location.
       if(user?.role==='admin' && d.role!=='admin'){
         if(!String(d.parent_id||'').trim()) throw Error(`Parent ID is required for ${d.role}`);
-        if(!selectedLocations.length) throw Error(`Location Code is required for ${d.role}`);
+        if(d.role!=='field_officer' && !selectedLocations.length) throw Error(`Location Code is required for ${d.role}`);
         if(['supervisor','guard','officer'].includes(d.role) && selectedLocations.length!==1)
           throw Error(`${d.role} can use only one Location Code`);
       }
@@ -807,7 +817,7 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       if(!/^\+?[0-9\s()-]{10,20}$/.test(d.contact_number)) throw Error('Enter a valid phone number');
       if(!d.parent_id && d.role!=='admin') throw Error('Select Parent ID');
       if(d.role==='admin' && user?.role==='master_admin') d.parent_id='adi123';
-      if(!selectedLocations.length) throw Error('Select at least one Location Code');
+      if(!selectedLocations.length && d.role!=='field_officer') throw Error('Select at least one Location Code');
       const created = await api('/staff',{method:'POST',body:JSON.stringify(d)});
       window.__lastCreatedStaff = {
         staff_id: created.staff_id||d.staff_id,
@@ -880,6 +890,7 @@ $('#downloadAttendanceMatrix')?.addEventListener('click',()=>{const m=$('#attend
 $('#attendanceMonth')?.addEventListener('change',()=>{if(isAdminRole)refresh()});$('#dailyDate')?.setAttribute('value',new Date().toISOString().slice(0,10));$('#attendanceMonth')?.setAttribute('value',new Date().toISOString().slice(0,7));$('#dailyDate')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));$('#dailyLocation')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#dailyIdSearch')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#attendanceIdSearch')?.addEventListener('input',()=>renderAttendance(window._attendanceRows||[]));window.downloadAttendanceMonth=(r)=>{const m=$('#attendanceMonth')?.value;if(!m)return alert('Select a month first');downloadAttendance(r,'',m)};
 $('form[data-type="staff"] select[name="role"]')?.addEventListener('change',()=>fillCreateParent(staff));
 $('#createLocation')?.addEventListener('change',()=>fillCreateParent(staff));
+$('#createLocationManual')?.addEventListener('input',()=>fillCreateParent(staff));
 $('#profileRoleFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
 $('#profileLocationFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
 $('#downloadProfileUpdateSheet')?.addEventListener('click',()=>{

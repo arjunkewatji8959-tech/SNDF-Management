@@ -1214,10 +1214,12 @@
 
               <!-- SECTION: MEMBER LOCATION -->
               <div class="member-field member-field-location">
-                <label for="createLocation">Location Code / Select Location</label>
+                <label for="createLocation">Location Code</label>
                 <select name="location_code" id="createLocation" data-role-location-select required>
                   <option value="">Select Location</option>
                 </select>
+                <input name="location_code_manual" id="createLocationManual" list="createLocationOptions" autocomplete="off" placeholder="Type Location Code (optional for Field Officer)" style="display:none">
+                <datalist id="createLocationOptions"></datalist>
                 <small id="createLocationHint" class="muted-note">Select the working Location Code.</small>
               </div>
               <!-- END SECTION: MEMBER LOCATION -->
