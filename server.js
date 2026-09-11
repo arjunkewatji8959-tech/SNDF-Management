@@ -77,7 +77,7 @@ const columns = {
     ['age','INTEGER'],['height','REAL'],['weight','REAL'],['blood_group','TEXT'],['qualification','TEXT'],
     ['physical_level','TEXT'],['medical_level','TEXT'],['skills','TEXT'],['police_verification','TEXT'],
     ['driving_license','TEXT'],['training_details','TEXT'],['work_experience','TEXT'],
-    ['photo_front','TEXT'],['photo_back','TEXT'],['photo_left','TEXT'],['photo_right','TEXT'],['is_reliever','INTEGER DEFAULT 0'],['reliever_parent_id','TEXT']
+    ['photo_front','TEXT'],['photo_back','TEXT'],['photo_left','TEXT'],['photo_right','TEXT'],['is_reliever','INTEGER DEFAULT 0'],['reliever_parent_id','TEXT'],['reliever_duty_hours','INTEGER DEFAULT 12'],['reliever_shift',"TEXT DEFAULT 'Day Shift'"]
   ],
   attendance: [['photo','TEXT'],['location','TEXT'],['shift','TEXT'],['duty_hours','INTEGER DEFAULT 12'],['check_in','TEXT'],['check_in_at','TEXT'],['check_out','TEXT'],['hours_worked','REAL DEFAULT 0'],['attendance_status','TEXT DEFAULT \'Present\'']],
   fines: [], notices: [], help_requests: [], point_transfer_requests: []
@@ -188,6 +188,38 @@ db.serialize(()=>{
     active INTEGER NOT NULL DEFAULT 1,
     UNIQUE(staff_id,location_code)
   )`);
+
+  // Core location/schedule schema is created BEFORE dbReady becomes true.
+  // This prevents first-request race conditions on Railway after a cold start.
+  db.run(`CREATE TABLE IF NOT EXISTS locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    address TEXT DEFAULT '',
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    radius_meters INTEGER NOT NULL DEFAULT 200,
+    duty_shift TEXT NOT NULL DEFAULT '12_hour',
+    duty_hours INTEGER NOT NULL DEFAULT 12,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.run("ALTER TABLE locations ADD COLUMN duty_shift TEXT NOT NULL DEFAULT '12_hour'",()=>{});
+  db.run("ALTER TABLE locations ADD COLUMN duty_hours INTEGER NOT NULL DEFAULT 12",()=>{});
+
+  db.run(`CREATE TABLE IF NOT EXISTS shift_schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    staff_id TEXT NOT NULL,
+    location_code TEXT NOT NULL,
+    schedule_date TEXT NOT NULL,
+    duty_hours INTEGER NOT NULL,
+    shift TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(staff_id,location_code,schedule_date)
+  )`);
+
   db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active)
     SELECT staff_id,location_code,'system-migration',1 FROM staff
     WHERE role IN ('admin','field_officer') AND TRIM(COALESCE(location_code,''))<>''`);
@@ -1692,20 +1724,8 @@ function adminOnly(req, res, next) {
 
 // =====================================================
 // LOCATION OWNERSHIP / ASSIGNMENT TABLE
-// Safe migration for older single-location records is included below.
+// Schema and legacy migration are initialized during startup.
 // =====================================================
-db.run(`CREATE TABLE IF NOT EXISTS location_assignments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  staff_id TEXT NOT NULL,
-  location_code TEXT NOT NULL,
-  assigned_by TEXT NOT NULL,
-  assigned_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  active INTEGER NOT NULL DEFAULT 1,
-  UNIQUE(staff_id,location_code)
-)`);
-db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active)
-  SELECT staff_id,location_code,'system-migration',1 FROM staff
-  WHERE role IN ('admin','field_officer') AND TRIM(COALESCE(location_code,''))<>''`);
 
 // =====================================================
 // SECTION: LOCATION SCOPE HELPERS
@@ -1759,7 +1779,12 @@ app.post('/api/location-assignments', auth, roles('admin','master_admin'), (req,
     const verify=()=>{
       db.serialize(()=>{
         db.run('UPDATE location_assignments SET active=0 WHERE staff_id=?',[target]);
-        const stmt=db.prepare('INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active) VALUES(?,?,?,1)');
+        const stmt=db.prepare(`INSERT INTO location_assignments(staff_id,location_code,assigned_by,active)
+          VALUES(?,?,?,1)
+          ON CONFLICT(staff_id,location_code) DO UPDATE SET
+            assigned_by=excluded.assigned_by,
+            assigned_at=CURRENT_TIMESTAMP,
+            active=1`);
         locations.forEach(code=>stmt.run(target,code,req.user.staff_id));
         stmt.finalize(err=>{
           if(err)return res.status(500).json({error:err.message});
