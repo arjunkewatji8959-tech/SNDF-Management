@@ -737,8 +737,8 @@
       // END SECTION: LOCATION DISTRIBUTION / OWNERSHIP
 
       // Initial saved-location load.
-      // Initial load is performed once at the end of this script.
-
+      loadLocations();
+      loadAssignments();
 
       // -----------------------------------------------------
       // SECTION: EDIT LOCATION
@@ -777,7 +777,6 @@
 
           showMessage('✅ Location delete हो गई।');
           await loadLocations();
-          await loadAssignments();
         } catch (err) {
           showMessage(`❌ ${err.message}`, false);
         }

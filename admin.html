@@ -1148,57 +1148,88 @@
             Create / Manage Members
           </h2>
           <div class="panel">
-            <form data-type="staff" class="grid-form">
-              <select name="role" id="createRole">
-                <option value="field_officer">
-                  Field Officer
-                </option>
-                <option value="officer">
-                  Officer
-                </option>
-                <option value="supervisor">
-                  Supervisor
-                </option>
-                <option value="guard">
-                  Guard
-                </option>
-                <option value="admin" class="master-only-option">
-                  Admin (Master Admin Only)
-                </option>
-              </select>
-              <input name="name" placeholder="Full Name" required>
-              <input name="staff_id" placeholder="Staff ID" required>
-              <input name="password" type="password" placeholder="Password" required>
-              <input name="post" placeholder="Post">
-              <input name="salary" type="number" min="0" placeholder="Salary">
-              <input name="dob" type="date">
-              <input name="department" placeholder="Department">
+            <!-- SECTION: CREATE MEMBER FORM -->
+            <form data-type="staff" class="grid-form member-create-form">
+              <div class="member-field member-field-role">
+                <label for="createRole">Role</label>
+                <select name="role" id="createRole" required>
+                  <option value="field_officer">Field Officer</option>
+                  <option value="officer">Officer</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="guard">Guard</option>
+                  <option value="admin" class="master-only-option">Admin (Master Admin Only)</option>
+                </select>
+              </div>
+
+              <div class="member-field">
+                <label for="createName">Name</label>
+                <input id="createName" name="name" placeholder="Full Name" autocomplete="name" required>
+              </div>
+
+              <div class="member-field">
+                <label for="createStaffId">Staff ID</label>
+                <input id="createStaffId" name="staff_id" placeholder="e.g. FO001" autocomplete="username" required>
+              </div>
+
+              <div class="member-field">
+                <label for="createPassword">Password</label>
+                <input id="createPassword" name="password" type="password" minlength="6" placeholder="Minimum 6 characters" autocomplete="new-password" required>
+              </div>
+
+              <div class="member-field">
+                <label for="createPost">Post</label>
+                <input id="createPost" name="post" placeholder="Post / Designation" required>
+              </div>
+
+              <div class="member-field">
+                <label for="createSalary">Salary</label>
+                <input id="createSalary" name="salary" type="number" min="0" step="1" placeholder="Monthly Salary" required>
+              </div>
+
+              <div class="member-field">
+                <label for="createDob">Date of Birth</label>
+                <input id="createDob" name="dob" type="date" required>
+              </div>
+
+              <div class="member-field">
+                <label for="createDepartment">Department</label>
+                <input id="createDepartment" name="department" placeholder="Department" required>
+              </div>
+
               <!-- SECTION: MEMBER LOCATION -->
-              <label class="field-label" for="createLocation">Location Code</label>
-              <select name="location_code" id="createLocation" data-role-location-select>
-                <option value="">
-                  Select Location (Create Location First)
-                </option>
-              </select>
-              <small id="createLocationHint" class="muted-note">Select the working Location Code.</small>
+              <div class="member-field member-field-location">
+                <label for="createLocation">Location Code / Select Location</label>
+                <select name="location_code" id="createLocation" data-role-location-select required>
+                  <option value="">Select Location</option>
+                </select>
+                <small id="createLocationHint" class="muted-note">Select the working Location Code.</small>
+              </div>
               <!-- END SECTION: MEMBER LOCATION -->
 
               <!-- SECTION: MEMBER PARENT -->
-              <select name="parent_id" id="createParent">
-                <option value="">Select Parent ID</option>
-              </select>
-              <small id="createParentHint" class="muted-note">Parent ID is required for members created by Admin.</small>
+              <div class="member-field member-field-parent">
+                <label for="createParent">Select Parent ID</label>
+                <select name="parent_id" id="createParent">
+                  <option value="">Select Parent ID</option>
+                </select>
+                <small id="createParentHint" class="muted-note">Parent ID will be filtered according to the selected role and location.</small>
+              </div>
               <!-- END SECTION: MEMBER PARENT -->
 
-              <small id="createHierarchyHint" class="muted-note">
-                Admin → Field Officer / Officer → Supervisor → Guard. Field Officer can be assigned to multiple locations. Supervisor and Guard use one location.
-              </small>
-              <input name="contact_number" placeholder="Contact Number">
-              <button class="action primary-action">
-                Create Member
-              </button>
+              <div class="member-field member-field-phone">
+                <label for="createContact">Phone Number</label>
+                <input id="createContact" name="contact_number" type="tel" inputmode="tel" placeholder="Phone Number" autocomplete="tel" minlength="10" maxlength="20" required>
+              </div>
+
+              <div class="member-create-notes">
+                <small id="createHierarchyHint" class="muted-note">
+                  Hierarchy: Admin → Field Officer / Officer → Supervisor → Guard. Field Officer can use multiple locations; Supervisor and Guard use one location.
+                </small>
+              </div>
+
+              <button type="submit" class="action primary-action member-create-button">Create Member</button>
             </form>
-            <!-- END SECTION: FORM -->
+            <!-- END SECTION: CREATE MEMBER FORM -->
           </div>
           <div class="panel">
             <div class="filter-row">

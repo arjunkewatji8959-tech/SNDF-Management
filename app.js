@@ -339,111 +339,71 @@ function fillCreateParent(list){
   if(!form||!roleSel||!parentSel||!locSel)return;
 
   const roleVal=String(roleSel.value||'').trim();
+  const isMaster=user?.role==='master_admin';
   const isNormalAdmin=user?.role==='admin';
-
-  // Read the currently available location options before rebuilding the parent list.
   const locations=[...locSel.options].filter(o=>String(o.value||'').trim()).map(o=>String(o.value).trim());
 
-  // Field Officer can own multiple locations. Every other operational role uses exactly one.
-  if(roleVal==='field_officer'){
-    locSel.multiple=true;
-    locSel.dataset.multi='true';
-    locSel.size=Math.min(Math.max(locations.length,3),6);
-    if(locHint)locHint.textContent='Field Officer: select one or more Location Codes. All selected locations will be assigned to this Field Officer.';
-  }else{
-    locSel.multiple=false;
-    delete locSel.dataset.multi;
-    locSel.size=1;
-    if(locHint)locHint.textContent='Select one Location Code.';
+  // Admin and Field Officer may have multiple locations. Supervisor/Guard/Officer use one.
+  const multi=['admin','field_officer'].includes(roleVal);
+  locSel.multiple=multi;
+  locSel.size=multi ? Math.min(Math.max(locations.length,3),6) : 1;
+  if(locHint)locHint.textContent=multi
+    ? `${label(roleVal)}: select one or more active Location Codes.`
+    : 'Select exactly one active Location Code.';
+
+  if(!multi && locSel.selectedOptions.length>1){
+    const first=locSel.selectedOptions[0];
+    [...locSel.options].forEach(o=>o.selected=false);
+    if(first)first.selected=true;
   }
-
-  // Re-read selections after the multiple/single mode is applied.
-  const selectedLocations=[...locSel.selectedOptions]
-    .map(o=>String(o.value||'').trim())
-    .filter(Boolean);
-  const selectedLocation=selectedLocations[0]||'';
-
+  const selected=[...locSel.selectedOptions].map(o=>String(o.value||'').trim()).filter(Boolean);
+  const selectedLocation=selected[0]||'';
   let parents=[];
 
-  // Admin is the mandatory parent for Field Officer and Officer.
-  if(isNormalAdmin && ['field_officer','officer'].includes(roleVal)){
-    parents=[user];
-  }
-  // Supervisor must use a Field Officer who owns the selected location.
-  else if(roleVal==='supervisor'){
-    parents=list.filter(s=>
-      s.role==='field_officer' &&
-      s.status==='active' &&
-      Array.isArray(s.assigned_locations) &&
-      selectedLocation &&
-      s.assigned_locations.includes(selectedLocation)
-    );
-  }
-  // Guard must use a Supervisor at the exact selected location.
-  else if(roleVal==='guard'){
-    parents=list.filter(s=>
-      s.role==='supervisor' &&
-      s.status==='active' &&
-      selectedLocation &&
-      String(s.location_code||'')===selectedLocation
-    );
-  }
-  // Master Admin's existing parent behavior is preserved.
-  else if(!isNormalAdmin && ['field_officer','officer'].includes(roleVal)){
-    parents=list.filter(s=>s.role==='admin' && s.status==='active');
+  if(roleVal==='admin' && isMaster){
+    parents=list.filter(s=>s.role==='master_admin' && s.status==='active');
+    if(!parents.length) parents=[{staff_id:'adi123',name:'SNDF Master Admin',role:'master_admin',status:'active'}];
+  }else if(['field_officer','officer'].includes(roleVal)){
+    parents=isNormalAdmin ? [user] : list.filter(s=>s.role==='admin'&&s.status==='active');
+  }else if(roleVal==='supervisor'){
+    parents=list.filter(s=>s.role==='field_officer'&&s.status==='active'&&selectedLocation&&Array.isArray(s.assigned_locations)&&s.assigned_locations.includes(selectedLocation));
+  }else if(roleVal==='guard'){
+    parents=list.filter(s=>s.role==='supervisor'&&s.status==='active'&&selectedLocation&&String(s.location_code||'')===selectedLocation);
   }
 
-  const requiredForAdmin=isNormalAdmin && roleVal!=='admin';
+  const labelText=roleVal==='admin'?'Select Master Admin Parent ID':
+    roleVal==='supervisor'?'Select Field Officer Parent ID':
+    roleVal==='guard'?'Select Supervisor Parent ID':
+    ['field_officer','officer'].includes(roleVal)?'Select Admin Parent ID':'Select Parent ID';
 
-  // Always show the actual Parent Staff ID prominently in the option text.
-  const labelText =
-    roleVal==='supervisor' ? 'Select Field Officer Parent ID' :
-    roleVal==='guard' ? 'Select Supervisor Parent ID' :
-    ['field_officer','officer'].includes(roleVal) ? 'Select Admin Parent ID' :
-    'Select Parent ID';
+  parentSel.innerHTML='<option value="">'+labelText+'</option>'+parents.map(s=>{
+    const id=escape(s.staff_id||'');
+    const nm=escape(s.name||'');
+    return `<option value="${id}">${id} — ${nm}</option>`;
+  }).join('');
 
-  parentSel.innerHTML='<option value="">'+labelText+'</option>'+
-    parents.map(s=>{
-      const id=escape(s.staff_id||'');
-      const name=escape(s.name||'');
-      const locs=Array.isArray(s.assigned_locations)&&s.assigned_locations.length
-        ? ' • '+escape(s.assigned_locations.join(', '))
-        : (s.location_code ? ' • '+escape(s.location_code) : '');
-      return `<option value="${id}">${id} — ${name}${locs}</option>`;
-    }).join('');
+  const autoParent=(roleVal==='admin'&&isMaster)?'adi123':
+    (isNormalAdmin&&['field_officer','officer'].includes(roleVal)?String(user.staff_id||''):'');
+  parentSel.required=roleVal!=='master_admin';
+  parentSel.disabled=false;
+  if(autoParent)parentSel.value=autoParent;
+  // Keep the form value serializable through FormData even for automatic parents.
+  parentSel.dataset.autoParent=autoParent||'';
 
-  if(requiredForAdmin){
-    parentSel.required=true;
-    parentSel.disabled=false;
+  if(parentHint)parentHint.textContent=autoParent
+    ? `Parent ID: ${autoParent} (automatic)`
+    : parents.length
+      ? `${parents.length} valid parent(s) available for ${selectedLocation||'selected location'}.`
+      : 'No valid parent found. Create/assign the required parent first.';
 
-    // For a normal Admin, its own Staff ID is automatically the parent.
-    if(['field_officer','officer'].includes(roleVal)){
-      parentSel.value=String(user?.staff_id||'');
-      if(parentHint)parentHint.textContent=`Parent Admin ID: ${user?.staff_id||'—'} (automatic)`;
-    }else{
-      if(parentHint){
-        parentHint.textContent=parents.length
-          ? `Select Parent ID. ${parents.length} valid parent(s) available for Location ${selectedLocation||'—'}.`
-          : `No valid parent found for Location ${selectedLocation||'—'}. Create/assign the required parent first.`;
-      }
-    }
-  }else{
-    parentSel.required=false;
-    parentSel.disabled=false;
-    if(parentHint)parentHint.textContent=parents.length
-      ? 'Select the correct Parent ID according to the hierarchy.'
-      : 'Select the correct parent according to the hierarchy.';
-  }
-
-  if(hierarchyHint){
-    const map={
-      field_officer:'Field Officer → Parent must be Admin; one or more locations required.',
-      officer:'Officer → Parent must be Admin; one location required.',
-      supervisor:'Supervisor → Parent must be Field Officer assigned to the selected location.',
-      guard:'Guard → Parent must be Supervisor at the same selected location.'
-    };
-    hierarchyHint.textContent=map[roleVal]||'Admin account is created only by Master Admin.';
-  }
+  const hints={
+    admin:'Admin → Parent is Master Admin. Master Admin creates Admin accounts.',
+    field_officer:'Field Officer → Parent must be an active Admin; multiple locations allowed.',
+    officer:'Officer → Parent must be an active Admin; one location only.',
+    supervisor:'Supervisor → Parent must be a Field Officer assigned to the selected location.',
+    guard:'Guard → Parent must be a Supervisor at the same selected location.'
+  };
+  if(hierarchyHint)hierarchyHint.textContent=hints[roleVal]||'Select a role and complete all required fields.';
 }
 // END SECTION: FUNCTION fillCreateParent
 
@@ -778,6 +738,13 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
         if(!String(d.location_code||'').trim()) throw Error(`Location Code is required for ${d.role}`);
         if(!String(d.parent_id||'').trim()) throw Error(`Parent ID is required for ${d.role}`);
       }
+      d.name=String(d.name||'').trim(); d.staff_id=String(d.staff_id||'').trim(); d.post=String(d.post||'').trim(); d.department=String(d.department||'').trim(); d.dob=String(d.dob||'').trim(); d.contact_number=String(d.contact_number||'').trim();
+      if(!d.name||!d.staff_id||!d.password||!d.post||!d.department||!d.dob||!d.contact_number) throw Error('Name, ID, Password, Post, Date of Birth, Department and Phone Number are required');
+      if(Number(d.salary||0)<0) throw Error('Salary cannot be negative');
+      if(!/^\+?[0-9\s()-]{10,20}$/.test(d.contact_number)) throw Error('Enter a valid phone number');
+      if(!d.parent_id && d.role!=='admin') throw Error('Select Parent ID');
+      if(d.role==='admin' && user?.role==='master_admin') d.parent_id='adi123';
+      if(!selectedLocations.length) throw Error('Select at least one Location Code');
       const created = await api('/staff',{method:'POST',body:JSON.stringify(d)});
       window.__lastCreatedStaff = { staff_id: created.staff_id||d.staff_id, role: created.role||d.role, name: created.name||d.name, database_id: created.id };
     }
