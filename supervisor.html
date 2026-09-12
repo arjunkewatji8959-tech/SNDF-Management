@@ -567,27 +567,8 @@
           </h2>
           <div class="panel fine-form">
             <form data-type="fine" class="grid-form">
-              <!-- =====================================================
-                   SECTION: FINE EVIDENCE CAMERA
-                   Live camera photo is saved with the fine record.
-                   ===================================================== -->
-              <div class="fine-camera-box" data-fine-camera>
-                <div class="fine-camera-live">
-                  <video id="fineCamera" autoplay playsinline muted></video>
-                  <button type="button" id="fineCapture" class="action primary-action">📷 Capture Fine Image</button>
-                </div>
-                <div class="fine-camera-preview">
-                  <img id="fineCaptured" alt="Fine evidence preview">
-                  <button type="button" id="fineRetake" class="action">↻ Retake</button>
-                </div>
-                <input type="hidden" id="fineImage" name="image" value="">
-              </div>
-              <!-- END SECTION: FINE EVIDENCE CAMERA -->
-
-              <label>Target Staff ID
-                <input id="fineTarget" name="target_id" list="fineTargetList" placeholder="Enter Staff ID" required autocomplete="off">
-              </label>
-              <datalist id="fineTargetList"></datalist>
+              <select id="fineTarget" name="target_id" required>
+              </select>
               <input name="reason" placeholder="Fine reason" required>
               <input name="amount" type="number" min="1" placeholder="Fine amount" required>
               <button class="action danger">
@@ -618,7 +599,7 @@
                   <th>
                     Date
                   </th>
-                <th>Photo</th></tr>
+                </tr>
               </thead>
               <tbody id="fineRows">
               </tbody>
@@ -645,24 +626,33 @@
           </h2>
           <div class="panel">
             <form data-type="staff" class="grid-form">
-              <!-- SECTION: Supervisor creates Guard -->
-              <input type="hidden" name="role" value="guard">
-              <input name="name" placeholder="Guard Full Name" required>
-              <input name="staff_id" placeholder="Guard Staff ID" required>
-              <input name="password" type="password" placeholder="Password (min 6)" required minlength="6">
-              <input name="post" value="Guard" placeholder="Post">
+              <select name="role">
+                <option value="field_officer">
+                  Field Officer
+                </option>
+                <option value="supervisor">
+                  Supervisor
+                </option>
+                <option value="guard">
+                  Guard
+                </option>
+                <option value="admin">
+                  Admin
+                </option>
+              </select>
+              <input name="name" placeholder="Full Name" required>
+              <input name="staff_id" placeholder="Staff ID" required>
+              <input name="password" type="password" placeholder="Password" required>
+              <input name="post" placeholder="Post">
               <input name="salary" type="number" min="0" placeholder="Salary">
               <input name="dob" type="date">
               <input name="department" placeholder="Department">
-              <select name="location_code" id="createLocation" required>
-                <option value="">Select Location</option>
-              </select>
-              <input type="hidden" name="parent_id" id="createSupervisorParent" value="">
+              <input name="location_code" placeholder="Location Code">
+              <input name="parent_id" placeholder="Parent Staff ID">
               <input name="contact_number" placeholder="Contact Number">
               <button class="action primary-action">
-                Create Guard
+                Create Member
               </button>
-              <!-- END SECTION: Supervisor creates Guard -->
             </form>
             <!-- END SECTION: FORM -->
           </div>

@@ -46,9 +46,6 @@
         <button data-view="team-management">
           👤 Officer Management
         </button>
-        <button data-view="reliever">
-          ♻ Reliever Management
-        </button>
         <button data-view="fine">
           ⚠ Fine Guard / Supervisor
         </button>
@@ -444,35 +441,31 @@
           </h2>
           <div class="panel">
             <h3>
-              Create Supervisor
+              Create Officer
             </h3>
             <p class="muted-note">
               Chain: Field Officer → Officer → Supervisor → Guard. A Field Officer can create Officers under their own ID.
             </p>
             <form data-type="staff" class="grid-form">
-              <!-- SECTION: Field Officer creates Supervisor -->
-              <input type="hidden" name="role" value="supervisor">
-              <input name="name" placeholder="Supervisor Full Name" required>
-              <input name="staff_id" placeholder="Supervisor Staff ID" required>
-              <input name="password" type="password" placeholder="Password (min 6)" required minlength="6">
-              <input name="post" value="Supervisor" placeholder="Post">
+              <input type="hidden" name="role" value="officer">
+              <input name="name" placeholder="Officer Full Name" required>
+              <input name="staff_id" placeholder="Officer Staff ID" required>
+              <input name="password" type="password" placeholder="Password" required>
+              <input name="post" value="Officer" placeholder="Post">
               <input name="salary" type="number" min="0" placeholder="Salary">
               <input name="department" placeholder="Department">
-              <select name="location_code" id="createLocation" required>
-                <option value="">Select Location</option>
-              </select>
-              <input type="hidden" name="parent_id" id="createSupervisorParent" value="">
+              <input name="location_code" id="createOfficerLocation" value="" placeholder="Location Code" required>
+              <input type="hidden" name="parent_id" id="createOfficerParent" value="">
               <input name="contact_number" placeholder="Contact Number">
               <button class="action primary-action">
-                Create Supervisor
+                Create Officer
               </button>
-              <!-- END SECTION: Field Officer creates Supervisor -->
             </form>
             <!-- END SECTION: FORM -->
           </div>
           <div class="panel table-wrap">
             <h3>
-              My Supervisors
+              My Officers
             </h3>
             <table>
               <thead>
@@ -491,29 +484,12 @@
                   </th>
                 </tr>
               </thead>
-              <tbody id="mySupervisorRows">
+              <tbody id="myOfficerRows">
               </tbody>
             </table>
           </div>
         </section>
         <!-- END SECTION: SECTION -->
-        <!-- =====================================================
-             FIELD OFFICER RELIEVER VIEW
-             Admin/Master Admin assign relievers; Field Officer can monitor them.
-        ===================================================== -->
-        <section id="reliever" class="view hidden">
-          <h2>♻ Reliever Management</h2>
-          <div class="panel">
-            <p class="muted-note">Aapke assigned locations ke Guard/Supervisor relievers yahan dikhेंगे. Reliever assign/change karne ka अधिकार Admin ya Master Admin ke paas rahega.</p>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>Role</th><th>Name</th><th>Staff ID</th><th>Location</th><th>Parent ID</th><th>Reliever</th><th>Duty Hours</th><th>Shift</th></tr></thead>
-                <tbody id="fieldRelieverRows"><tr><td colspan="8">Loading...</td></tr></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-        <!-- END SECTION: FIELD OFFICER RELIEVER VIEW -->
         <section id="daily" class="view hidden">
           <h2>
             Daily Attendance
@@ -563,27 +539,8 @@
           </h2>
           <div class="panel fine-form">
             <form data-type="fine" class="grid-form">
-              <!-- =====================================================
-                   SECTION: FINE EVIDENCE CAMERA
-                   Live camera photo is saved with the fine record.
-                   ===================================================== -->
-              <div class="fine-camera-box" data-fine-camera>
-                <div class="fine-camera-live">
-                  <video id="fineCamera" autoplay playsinline muted></video>
-                  <button type="button" id="fineCapture" class="action primary-action">📷 Capture Fine Image</button>
-                </div>
-                <div class="fine-camera-preview">
-                  <img id="fineCaptured" alt="Fine evidence preview">
-                  <button type="button" id="fineRetake" class="action">↻ Retake</button>
-                </div>
-                <input type="hidden" id="fineImage" name="image" value="">
-              </div>
-              <!-- END SECTION: FINE EVIDENCE CAMERA -->
-
-              <label>Target Staff ID
-                <input id="fineTarget" name="target_id" list="fineTargetList" placeholder="Enter Staff ID" required autocomplete="off">
-              </label>
-              <datalist id="fineTargetList"></datalist>
+              <select id="fineTarget" name="target_id" required>
+              </select>
               <label>
                 Fine Reason (Select)
                 <select id="fineReason" name="reason_select">
@@ -655,7 +612,7 @@
                   <th>
                     Date
                   </th>
-                <th>Photo</th></tr>
+                </tr>
               </thead>
               <tbody id="fineRows">
               </tbody>

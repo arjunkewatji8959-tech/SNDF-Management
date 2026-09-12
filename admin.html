@@ -79,9 +79,6 @@
         <button type="button" id="locationManagementBtn" class="location-management-btn" title="Location Management">
           📍 Location Management
         </button>
-        <button type="button" id="shiftScheduleBtn" class="location-management-btn" title="Shift Schedule">
-          🕐 Shift Schedule
-        </button>
         <button data-view="profile-records">
           ♙ All Profile Records
         </button>
@@ -352,6 +349,9 @@
                   </option>
                   <option value="field_officer">
                     Field Officer
+                  </option>
+                  <option value="officer">
+                    Officer
                   </option>
                   <option value="supervisor">
                     Supervisor
@@ -740,39 +740,6 @@
           <h2>
             Daily Attendance
           </h2>
-          <div class="panel" id="adminMarkPresentPanel">
-            <h3>Mark Present by Staff ID</h3>
-            <p class="muted-note">Admin / Master Admin kisi bhi permitted staff ki ID dal kar attendance ko Present mark kar sakte hain. Is manual entry mein camera photo zaroori nahi hai; record mein “Admin Marked Present” status save hoga.</p>
-            <form id="adminMarkPresentForm" class="download-toolbar">
-              <label>
-                Staff ID
-                <input id="adminPresentStaffId" name="staff_id" list="adminPresentStaffList" placeholder="Enter Staff ID" required autocomplete="off">
-              </label>
-              <datalist id="adminPresentStaffList"></datalist>
-              <label>
-                Attendance Date
-                <input id="adminPresentDate" name="date" type="date" required>
-              </label>
-              <label>
-                Shift
-                <select id="adminPresentShift" name="shift">
-                  <option value="">Auto / Effective Shift</option>
-                  <option value="Morning Shift">Morning Shift</option>
-                  <option value="Evening Shift">Evening Shift</option>
-                  <option value="Night Shift 8H">Night Shift 8H</option>
-                  <option value="Day Shift">Day Shift</option>
-                  <option value="Night Shift">Night Shift</option>
-                </select>
-              </label>
-              <label>
-                Location Code (optional)
-                <input id="adminPresentLocation" name="location_code" list="adminPresentLocationList" placeholder="Auto from staff profile">
-              </label>
-              <datalist id="adminPresentLocationList"></datalist>
-              <button class="action success" type="submit">✓ Mark Present</button>
-            </form>
-          </div>
-          <!-- END SECTION: ADMIN MARK PRESENT BY STAFF ID -->
           <div class="panel">
             <div class="download-toolbar">
               <label>
@@ -867,27 +834,8 @@
           </h2>
           <div class="panel fine-form">
             <form data-type="fine" class="grid-form">
-              <!-- =====================================================
-                   SECTION: FINE EVIDENCE CAMERA
-                   Live camera photo is saved with the fine record.
-                   ===================================================== -->
-              <div class="fine-camera-box" data-fine-camera>
-                <div class="fine-camera-live">
-                  <video id="fineCamera" autoplay playsinline muted></video>
-                  <button type="button" id="fineCapture" class="action primary-action">📷 Capture Fine Image</button>
-                </div>
-                <div class="fine-camera-preview">
-                  <img id="fineCaptured" alt="Fine evidence preview">
-                  <button type="button" id="fineRetake" class="action">↻ Retake</button>
-                </div>
-                <input type="hidden" id="fineImage" name="image" value="">
-              </div>
-              <!-- END SECTION: FINE EVIDENCE CAMERA -->
-
-              <label>Target Staff ID
-                <input id="fineTarget" name="target_id" list="fineTargetList" placeholder="Enter Staff ID" required autocomplete="off">
-              </label>
-              <datalist id="fineTargetList"></datalist>
+              <select id="fineTarget" name="target_id" required>
+              </select>
               <label>
                 Fine Reason (Select)
                 <select id="fineReason" name="reason_select">
@@ -959,7 +907,7 @@
                   <th>
                     Date
                   </th>
-                <th>Photo</th></tr>
+                </tr>
               </thead>
               <tbody id="fineRows">
               </tbody>
@@ -981,6 +929,9 @@
                   </option>
                   <option value="field_officer">
                     Field Officer
+                  </option>
+                  <option value="officer">
+                    Officer
                   </option>
                   <option value="supervisor">
                     Supervisor
@@ -1173,25 +1124,16 @@
               <input name="salary" type="number" min="0" placeholder="Salary">
               <input name="dob" type="date">
               <input name="department" placeholder="Department">
-              <!-- SECTION: MEMBER LOCATION -->
               <select name="location_code" id="createLocation">
                 <option value="">
                   Select Location (Create Location First)
                 </option>
               </select>
-              <small id="createLocationHint" class="muted-note">Select the working Location Code.</small>
-              <!-- END SECTION: MEMBER LOCATION -->
-
-              <!-- SECTION: MEMBER PARENT -->
               <select name="parent_id" id="createParent">
-                <option value="">Select Parent ID</option>
+                <option value="">
+                  Parent ID
+                </option>
               </select>
-              <small id="createParentHint" class="muted-note">Parent ID is required for members created by Admin.</small>
-              <!-- END SECTION: MEMBER PARENT -->
-
-              <small id="createHierarchyHint" class="muted-note">
-                Admin → Field Officer / Officer → Supervisor → Guard. Field Officer can be assigned to multiple locations. Supervisor and Guard use one location.
-              </small>
               <input name="contact_number" placeholder="Contact Number">
               <button class="action primary-action">
                 Create Member
@@ -1206,6 +1148,9 @@
                 <select id="memberRoleFilter">
                   <option value="field_officer">
                     Field Officer
+                  </option>
+                  <option value="officer">
+                    Officer
                   </option>
                   <option value="supervisor">
                     Supervisor
@@ -1945,10 +1890,6 @@
       // LOCATION MANAGEMENT BUTTON
         document.getElementById('locationManagementBtn')?.addEventListener('click', function () {
           window.location.href = 'location-management.html';
-        });
-        // SHIFT SCHEDULE NAVIGATION
-        document.getElementById('shiftScheduleBtn')?.addEventListener('click', function () {
-          window.location.href = 'shift-schedule.html';
         });
     </script>
   </body>
