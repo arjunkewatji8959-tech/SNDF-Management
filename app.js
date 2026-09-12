@@ -150,7 +150,7 @@ if(role==='field_officer'){
     .join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';
 }
 // END SECTION: FIELD OFFICER SUPERVISOR LIST
-window._attendanceRows=a;renderStaff(s);renderAllMembers(s);renderProfileRecords(s);fillCreateParent(s);fillAdminPresentTargets(s);setupAdminMarkPresent();renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();if(role==='officer')loadOfficerRelieverNotifications();}catch(e){console.log(e.message)}}
+window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);fillAdminPresentTargets(s);setupAdminMarkPresent();renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();if(role==='officer')loadOfficerRelieverNotifications();}catch(e){console.log(e.message)}}
 
 // END SECTION: FUNCTION refresh
 
@@ -326,39 +326,6 @@ function renderStaff(list){
 }
 // END SECTION: FUNCTION renderStaff
 
-// =====================================================
-// SECTION: FUNCTION renderAllMembers
-// Premium card list: all members are shown together, 3 cards per row on desktop.
-function renderAllMembers(list){
-  const box=$('#allMembersGrid');
-  const count=$('#allMembersCount');
-  if(!box)return;
-  const rows=Array.isArray(list)?list:[];
-  if(count)count.textContent=`${rows.length} Member${rows.length===1?'':'s'}`;
-  box.innerHTML=rows.map(x=>{
-    const role=label(x.role)||x.role||'Member';
-    const location=Array.isArray(x.assigned_locations)&&x.assigned_locations.length
-      ? x.assigned_locations.join(', ')
-      : (x.location_code||'—');
-    const parent=x.parent_id||'—';
-    const status=x.status||'active';
-    const statusClass=String(status).toLowerCase()==='active'?'active':'inactive';
-    return `<article class="member-card">
-      <div class="member-card-top">
-        <span class="member-role-badge">${escape(role)}</span>
-        <span class="member-status ${statusClass}">${escape(status)}</span>
-      </div>
-      <h4>${escape(x.name||'—')}</h4>
-      <div class="member-card-info">
-        <div><span>🪪 ID</span><b>${escape(x.staff_id||'—')}</b></div>
-        <div><span>📍 Location</span><b>${escape(location)}</b></div>
-        <div><span>👤 Parent ID</span><b>${escape(parent)}</b></div>
-      </div>
-      ${isAdminRole?`<button class="action danger member-delete-btn" onclick="removeStaff(${Number(x.id)})">Delete Member</button>`:''}
-    </article>`;
-  }).join('') || '<div class="empty-members">No members found.</div>';
-}
-// END SECTION: FUNCTION renderAllMembers
 
 // =====================================================
 
@@ -371,101 +338,57 @@ function fillCreateParent(list){
   const locHint=$('#createLocationHint'), parentHint=$('#createParentHint'), hierarchyHint=$('#createHierarchyHint');
   if(!form||!roleSel||!parentSel||!locSel)return;
 
-  const roleVal=String(roleSel.value||'').trim();
+  const roleVal=roleSel.value;
   const isNormalAdmin=user?.role==='admin';
+  const locations=[...locSel.options].filter(o=>o.value).map(o=>o.value);
 
-  // Read the currently available location options before rebuilding the parent list.
-  const locations=[...locSel.options].filter(o=>String(o.value||'').trim()).map(o=>String(o.value).trim());
-
-  // Field Officer can own multiple locations. Every other operational role uses exactly one.
+  // Field Officer may have multiple assigned locations. All other roles use one location.
   if(roleVal==='field_officer'){
     locSel.multiple=true;
-    locSel.dataset.multi='true';
     locSel.size=Math.min(Math.max(locations.length,3),6);
-    if(locHint)locHint.textContent='Field Officer: select one or more Location Codes. All selected locations will be assigned to this Field Officer.';
+    if(locHint)locHint.textContent='Field Officer: one or more Location Codes can be selected (multi-location allowed).';
   }else{
     locSel.multiple=false;
-    delete locSel.dataset.multi;
     locSel.size=1;
     if(locHint)locHint.textContent='Select one Location Code.';
   }
 
-  // Re-read selections after the multiple/single mode is applied.
-  const selectedLocations=[...locSel.selectedOptions]
-    .map(o=>String(o.value||'').trim())
-    .filter(Boolean);
-  const selectedLocation=selectedLocations[0]||'';
-
+  // Parent rules for the normal Admin account.
   let parents=[];
-
-  // Admin is the mandatory parent for Field Officer and Officer.
   if(isNormalAdmin && ['field_officer','officer'].includes(roleVal)){
     parents=[user];
-  }
-  // Supervisor must use a Field Officer who owns the selected location.
-  else if(roleVal==='supervisor'){
-    parents=list.filter(s=>
-      s.role==='field_officer' &&
-      s.status==='active' &&
-      Array.isArray(s.assigned_locations) &&
-      selectedLocation &&
-      s.assigned_locations.includes(selectedLocation)
-    );
-  }
-  // Guard must use a Supervisor at the exact selected location.
-  else if(roleVal==='guard'){
-    parents=list.filter(s=>
-      s.role==='supervisor' &&
-      s.status==='active' &&
-      selectedLocation &&
-      String(s.location_code||'')===selectedLocation
-    );
-  }
-  // Master Admin's existing parent behavior is preserved.
-  else if(!isNormalAdmin && ['field_officer','officer'].includes(roleVal)){
+  }else if(roleVal==='supervisor'){
+    const selected=[...locSel.selectedOptions].map(o=>o.value);
+    const loc=selected[0]||'';
+    parents=list.filter(s=>s.role==='field_officer' && s.status==='active' && (!loc || (s.assigned_locations||[]).includes(loc)));
+  }else if(roleVal==='guard'){
+    const loc=String(locSel.value||'');
+    parents=list.filter(s=>s.role==='supervisor' && s.status==='active' && (!loc || String(s.location_code||'')===loc));
+  }else if(!isNormalAdmin && ['field_officer','officer'].includes(roleVal)){
+    // Master Admin keeps its existing creation behavior; show active Admins as optional parents.
     parents=list.filter(s=>s.role==='admin' && s.status==='active');
   }
 
   const requiredForAdmin=isNormalAdmin && roleVal!=='admin';
-
-  // Always show the actual Parent Staff ID prominently in the option text.
-  const labelText =
-    roleVal==='supervisor' ? 'Select Field Officer Parent ID' :
-    roleVal==='guard' ? 'Select Supervisor Parent ID' :
-    ['field_officer','officer'].includes(roleVal) ? 'Select Admin Parent ID' :
-    'Select Parent ID';
-
-  parentSel.innerHTML='<option value="">'+labelText+'</option>'+
-    parents.map(s=>{
-      const id=escape(s.staff_id||'');
-      const name=escape(s.name||'');
-      const locs=Array.isArray(s.assigned_locations)&&s.assigned_locations.length
-        ? ' • '+escape(s.assigned_locations.join(', '))
-        : (s.location_code ? ' • '+escape(s.location_code) : '');
-      return `<option value="${id}">${id} — ${name}${locs}</option>`;
-    }).join('');
+  const labelText=roleVal==='supervisor'?'Select Field Officer Parent ID':roleVal==='guard'?'Select Supervisor Parent ID':
+    ['field_officer','officer'].includes(roleVal)?'Select Admin Parent ID':'Select Parent ID';
+  parentSel.innerHTML='<option value="">'+labelText+'</option>'+parents.map(s=>`<option value="${escape(s.staff_id)}">${escape(s.name)} — ${escape(s.staff_id)}${(s.assigned_locations||[]).length?' • '+escape(s.assigned_locations.join(', ')):s.location_code?' • '+escape(s.location_code):''}</option>`).join('');
 
   if(requiredForAdmin){
     parentSel.required=true;
-    parentSel.disabled=false;
-
-    // For a normal Admin, its own Staff ID is automatically the parent.
+    // For a normal Admin, the logged-in Admin is always the parent of FO/Officer.
     if(['field_officer','officer'].includes(roleVal)){
-      parentSel.value=String(user?.staff_id||'');
-      if(parentHint)parentHint.textContent=`Parent Admin ID: ${user?.staff_id||'—'} (automatic)`;
+      parentSel.value=user.staff_id;
+      parentSel.disabled=false;
+      if(parentHint)parentHint.textContent=`Parent Admin ID: ${user.staff_id} (automatic)`;
     }else{
-      if(parentHint){
-        parentHint.textContent=parents.length
-          ? `Select Parent ID. ${parents.length} valid parent(s) available for Location ${selectedLocation||'—'}.`
-          : `No valid parent found for Location ${selectedLocation||'—'}. Create/assign the required parent first.`;
-      }
+      parentSel.disabled=false;
+      if(parentHint)parentHint.textContent='Parent ID is required.';
     }
   }else{
     parentSel.required=false;
     parentSel.disabled=false;
-    if(parentHint)parentHint.textContent=parents.length
-      ? 'Select the correct Parent ID according to the hierarchy.'
-      : 'Select the correct parent according to the hierarchy.';
+    if(parentHint)parentHint.textContent='Select the correct parent according to the hierarchy.';
   }
 
   if(hierarchyHint){

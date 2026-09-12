@@ -449,38 +449,24 @@
             <p class="muted-note">
               Chain: Field Officer → Officer → Supervisor → Guard. A Field Officer can create Officers under their own ID.
             </p>
-            <form data-type="staff" class="grid-form create-member-form">
-              <label class="field-label">
-                Role
-                <select name="role" required>
-                  <option value="field_officer">Field Officer</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="guard">Guard</option>
-                </select>
-              </label>
-              <label class="field-label">
-                Name
-                <input name="name" placeholder="Full Name" required>
-              </label>
-              <label class="field-label">
-                ID / Staff ID
-                <input name="staff_id" placeholder="Staff ID" required>
-              </label>
-              <label class="field-label">
-                Password
-                <input name="password" type="password" placeholder="Password" required>
-              </label>
-              <label class="field-label">
-                Location Code
-                <input name="location_code" placeholder="Location Code" required>
-              </label>
-              <label class="field-label">
-                Parent ID
-                <input name="parent_id" placeholder="Parent Staff ID" required>
-              </label>
-              <button class="action primary-action create-member-save" type="submit">
-                Create &amp; Save Member
+            <form data-type="staff" class="grid-form">
+              <!-- SECTION: Field Officer creates Supervisor -->
+              <input type="hidden" name="role" value="supervisor">
+              <input name="name" placeholder="Supervisor Full Name" required>
+              <input name="staff_id" placeholder="Supervisor Staff ID" required>
+              <input name="password" type="password" placeholder="Password (min 6)" required minlength="6">
+              <input name="post" value="Supervisor" placeholder="Post">
+              <input name="salary" type="number" min="0" placeholder="Salary">
+              <input name="department" placeholder="Department">
+              <select name="location_code" id="createLocation" required>
+                <option value="">Select Location</option>
+              </select>
+              <input type="hidden" name="parent_id" id="createSupervisorParent" value="">
+              <input name="contact_number" placeholder="Contact Number">
+              <button class="action primary-action">
+                Create Supervisor
               </button>
+              <!-- END SECTION: Field Officer creates Supervisor -->
             </form>
             <!-- END SECTION: FORM -->
           </div>

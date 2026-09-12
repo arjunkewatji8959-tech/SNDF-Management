@@ -176,22 +176,6 @@ db.serialize(()=>{
     status TEXT, created_at TEXT NOT NULL
   )`);
 
-  // LOCATION ASSIGNMENTS - create this table during the main startup schema pass.
-  // This must exist BEFORE dbReady becomes true because staff/location APIs use it
-  // during startup and on the first login. Existing rows are preserved.
-  db.run(`CREATE TABLE IF NOT EXISTS location_assignments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    staff_id TEXT NOT NULL,
-    location_code TEXT NOT NULL,
-    assigned_by TEXT NOT NULL,
-    assigned_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    active INTEGER NOT NULL DEFAULT 1,
-    UNIQUE(staff_id,location_code)
-  )`);
-  db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active)
-    SELECT staff_id,location_code,'system-migration',1 FROM staff
-    WHERE role IN ('admin','field_officer') AND TRIM(COALESCE(location_code,''))<>''`);
-
 
   // MASTER ADMIN bootstrap:
   // Keep one fixed top-level account and never delete/overwrite other staff records.
@@ -409,7 +393,7 @@ function roles(...allowed){ return (req,res,next)=>allowed.includes(req.user.rol
 // END SECTION: FUNCTION roles
 
 
-app.get('/api/health',(req,res)=>res.status(dbReady?200:503).json({status:dbReady?'healthy':'starting',ready:dbReady,service:'SNDF backend',time:new Date().toISOString()}));
+app.get('/api/health',(req,res)=>res.json({status:'healthy',service:'SNDF backend',time:new Date().toISOString()}));
 
 // STAFF - only Admin creates/deletes/suspends. Everyone can read directory needed by their dashboard.
 app.get('/api/staff',auth,(req,res)=>{
