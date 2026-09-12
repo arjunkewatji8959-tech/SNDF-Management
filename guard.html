@@ -481,8 +481,10 @@
               <input name="salary" type="number" min="0" placeholder="Salary">
               <input name="dob" type="date">
               <input name="department" placeholder="Department">
-              <input name="location_code" placeholder="Location Code">
-              <input name="parent_id" placeholder="Parent Staff ID">
+              <input name="location_code" id="createLocation" list="createLocationOptions" placeholder="Enter Location Code manually">
+              <datalist id="createLocationOptions"></datalist>
+              <input name="parent_id" id="createParent" list="createParentOptions" placeholder="Enter Parent Staff ID manually">
+              <datalist id="createParentOptions"></datalist>
               <input name="contact_number" placeholder="Contact Number">
               <button class="action primary-action">
                 Create Member

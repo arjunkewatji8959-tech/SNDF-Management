@@ -1215,22 +1215,18 @@
               <!-- SECTION: MEMBER LOCATION -->
               <div class="member-field member-field-location">
                 <label for="createLocation">Location Code</label>
-                <select name="location_code" id="createLocation" data-role-location-select required>
-                  <option value="">Select Location</option>
-                </select>
-                <input name="location_code_manual" id="createLocationManual" list="createLocationOptions" autocomplete="off" placeholder="Type Location Code (optional for Field Officer)" style="display:none">
+                <input name="location_code" id="createLocation" list="createLocationOptions" autocomplete="off" placeholder="Enter Location Code manually" required>
                 <datalist id="createLocationOptions"></datalist>
-                <small id="createLocationHint" class="muted-note">Select the working Location Code.</small>
+                <small id="createLocationHint" class="muted-note">Type the Location Code manually. All active Location Codes will be shown as suggestions.</small>
               </div>
               <!-- END SECTION: MEMBER LOCATION -->
 
               <!-- SECTION: MEMBER PARENT -->
               <div class="member-field member-field-parent">
                 <label for="createParent">Select Parent ID</label>
-                <select name="parent_id" id="createParent">
-                  <option value="">Select Parent ID</option>
-                </select>
-                <small id="createParentHint" class="muted-note">Parent ID will be filtered according to the selected role and location.</small>
+                <input name="parent_id" id="createParent" list="createParentOptions" autocomplete="off" placeholder="Enter Parent Staff ID manually" required>
+                <datalist id="createParentOptions"></datalist>
+                <small id="createParentHint" class="muted-note">Type the Parent ID manually. Valid Parent IDs will be shown as suggestions.</small>
               </div>
               <!-- END SECTION: MEMBER PARENT -->
 

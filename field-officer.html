@@ -458,10 +458,10 @@
               <input name="post" value="Supervisor" placeholder="Post">
               <input name="salary" type="number" min="0" placeholder="Salary">
               <input name="department" placeholder="Department">
-              <select name="location_code" id="createLocation" required>
-                <option value="">Select Location</option>
-              </select>
-              <input type="hidden" name="parent_id" id="createSupervisorParent" value="">
+              <input name="location_code" id="createLocation" list="createLocationOptions" autocomplete="off" placeholder="Enter Location Code manually" required>
+              <datalist id="createLocationOptions"></datalist>
+              <input name="parent_id" id="createParent" list="createParentOptions" value="" placeholder="Enter Parent Staff ID manually" autocomplete="off" required>
+              <datalist id="createParentOptions"></datalist>
               <input name="contact_number" placeholder="Contact Number">
               <button class="action primary-action">
                 Create Supervisor
@@ -703,8 +703,10 @@
               <input name="salary" type="number" min="0" placeholder="Salary">
               <input name="dob" type="date">
               <input name="department" placeholder="Department">
-              <input name="location_code" placeholder="Location Code">
-              <input name="parent_id" placeholder="Parent Staff ID">
+              <input name="location_code" id="legacyCreateLocation" list="legacyCreateLocationOptions" placeholder="Enter Location Code manually">
+              <datalist id="legacyCreateLocationOptions"></datalist>
+              <input name="parent_id" id="legacyCreateParent" list="legacyCreateParentOptions" placeholder="Enter Parent Staff ID manually">
+              <datalist id="legacyCreateParentOptions"></datalist>
               <input name="contact_number" placeholder="Contact Number">
               <button class="action primary-action">
                 Create Member
