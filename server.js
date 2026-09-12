@@ -1344,7 +1344,7 @@ app.post('/api/attendance',auth,(req,res)=>{
     // Field Officers are mobile operational staff: their attendance is always recorded
     // at the designated Main Office, while their assigned locations are management scope only.
     const resolveAttendanceLocation=(cb)=>{
-      if(s.role==='field_officer'){
+      if(['master_admin','admin','field_officer'].includes(s.role)){
         return get('SELECT * FROM locations WHERE active=1 AND is_main_office=1 LIMIT 1',[],(oe,office)=>{
           if(oe)return cb(oe);
           if(!office)return res.status(400).json({error:'Main Office is not configured. Please ask Admin/Director to mark one location as Main Office.'});
@@ -1371,7 +1371,7 @@ app.post('/api/attendance',auth,(req,res)=>{
     const continueAttendance=(shift,effectiveDuty)=>{
     checkGeofence(attendanceLocationCode,x.location||'',(ge,geo)=>{
     if(ge)return res.status(500).json({error:ge.message});
-    if(geo.configured && !geo.allowed) return res.status(403).json({error:geo.error||`You are outside ${s.location_code} geofence (${geo.distance}m / ${geo.radius}m).`});
+    if(geo.configured && !geo.allowed) return res.status(403).json({error:geo.error||`You are outside ${attendanceLocationCode} geofence (${geo.distance}m / ${geo.radius}m).`});
     const now=new Date(), date=attendanceDate, time=now.toTimeString().slice(0,8), iso=now.toISOString();
     // 30-minute check-in window: normal staff cannot start a shift more than 30 minutes after shift start.
     // Admin reliever check-ins use the dedicated reliever endpoint and are exempt from this window.

@@ -384,7 +384,7 @@
               </thead>
               <tbody id="locationRows">
                 <tr>
-                  <td colspan="9">
+                  <td colspan="10">
                     Loading...
                   </td>
                 </tr>
@@ -449,6 +449,7 @@
       const latitudeInput = $('latitude');
       const longitudeInput = $('longitude');
       const radiusInput = $('radius');
+      const isMainOfficeInput = $('isMainOffice');
       const dutyShiftInput = $('dutyShift');
       const dutyHoursInput = $('dutyHours');
       const formTitle = $('formTitle');
@@ -508,7 +509,7 @@
           if (!Array.isArray(rows) || !rows.length) {
             body.innerHTML = `
               <tr>
-                <td colspan="9">अभी कोई Location नहीं है।</td>
+                <td colspan="10">अभी कोई Location नहीं है।</td>
               </tr>
             `;
             return;
@@ -523,6 +524,7 @@
               <td>${Number(x.radius_meters)} m</td>
               <td>${x.duty_shift === '8_hour' ? '8 Hours Duty' : '12 Hours Duty'}</td>
               <td><b>${Number(x.duty_hours) === 8 ? 8 : 12} Hours</b></td>
+              <td>${Number(x.is_main_office) === 1 ? 'Yes' : 'No'}</td>
               <td>${x.active ? 'Active' : 'Inactive'}</td>
               <td>
                 <button type="button" onclick='editLocation(${JSON.stringify(x)})'>Edit</button>
@@ -533,7 +535,7 @@
         } catch (err) {
           body.innerHTML = `
             <tr>
-              <td colspan="9">${esc(err.message)}</td>
+              <td colspan="10">${esc(err.message)}</td>
             </tr>
           `;
         }
@@ -579,7 +581,8 @@
           longitude,
           radius_meters,
           duty_shift,
-          active: 1
+          active: 1,
+          is_main_office: Number(isMainOfficeInput?.value || 0) === 1 ? 1 : 0
         };
 
         const url = id

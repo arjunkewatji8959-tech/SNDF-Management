@@ -488,7 +488,8 @@ function renderProfileRecords(list){
   const b=$('#profileRecordRows'); if(!b||!isAdminRole)return;
   const rf=$('#profileRoleFilter')?.value||'all', lf=$('#profileLocationFilter')?.value||'all';
   const rows=list.filter(s=>['master_admin','admin','field_officer','officer','supervisor','guard'].includes(s.role))
-    .filter(s=>rf==='all'||s.role===rf).filter(s=>lf==='all'||String(s.location_code||'')===lf);
+    .filter(s=>rf==='all'||s.role===rf)
+    .filter(s=>lf==='all'||String(s.location_code||'')===lf||Array.isArray(s.assigned_locations)&&s.assigned_locations.some(code=>String(code||'').toLowerCase()===String(lf).toLowerCase()));
   b.innerHTML=rows.map(s=>`<tr>
     <td><img class="profile-thumb" src="${escape(s.dp||s.photo_front||'assets-logo.png')}" alt="Profile"></td>
     <td>${label(s.role)}</td><td>${escape(s.name)}</td><td><b>${escape(s.staff_id)}</b></td>
@@ -627,7 +628,7 @@ function currentShift(){
 async function fillAutoAttendance(){
   let attendanceLocation=user?.location_code||'—';
   let dutyHours=currentDutyHours();
-  if(user?.role==='field_officer'){
+  if(['master_admin','admin','field_officer'].includes(user?.role)){
     try{
       const office=await api('/main-office');
       attendanceLocation=office?.code||'—';
