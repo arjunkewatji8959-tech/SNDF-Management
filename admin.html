@@ -1147,255 +1147,54 @@
           <h2>
             Create / Manage Members
           </h2>
-          <div class="panel">
-            <form data-type="staff" class="grid-form">
-              <select name="role" id="createRole">
-                <option value="field_officer">
-                  Field Officer
-                </option>
-                <option value="officer">
-                  Officer
-                </option>
-                <option value="supervisor">
-                  Supervisor
-                </option>
-                <option value="guard">
-                  Guard
-                </option>
-                <option value="admin" class="master-only-option">
-                  Admin (Master Admin Only)
-                </option>
-              </select>
-              <input name="name" placeholder="Full Name" required>
-              <input name="staff_id" placeholder="Staff ID" required>
-              <input name="password" type="password" placeholder="Password" required>
-              <input name="post" placeholder="Post">
-              <input name="salary" type="number" min="0" placeholder="Salary">
-              <input name="dob" type="date">
-              <input name="department" placeholder="Department">
-              <!-- SECTION: MEMBER LOCATION -->
-              <label class="field-label" for="createLocation">Location Code</label>
-              <select name="location_code" id="createLocation" data-role-location-select>
-                <option value="">
-                  Select Location (Create Location First)
-                </option>
-              </select>
-              <small id="createLocationHint" class="muted-note">Select the working Location Code.</small>
-              <!-- END SECTION: MEMBER LOCATION -->
-
-              <!-- SECTION: MEMBER PARENT -->
-              <select name="parent_id" id="createParent">
-                <option value="">Select Parent ID</option>
-              </select>
-              <small id="createParentHint" class="muted-note">Parent ID is required for members created by Admin.</small>
-              <!-- END SECTION: MEMBER PARENT -->
-
-              <small id="createHierarchyHint" class="muted-note">
-                Admin → Field Officer / Officer → Supervisor → Guard. Field Officer can be assigned to multiple locations. Supervisor and Guard use one location.
-              </small>
-              <input name="contact_number" placeholder="Contact Number">
-              <button class="action primary-action">
-                Create Member
-              </button>
-            </form>
-            <!-- END SECTION: FORM -->
-          </div>
-          <div class="panel">
-            <div class="filter-row">
-              <label class="filter-label">
-                Member List
-                <select id="memberRoleFilter">
-                  <option value="field_officer">
-                    Field Officer
-                  </option>
-                  <option value="supervisor">
-                    Supervisor
-                  </option>
-                  <option value="guard">
-                    Guard
-                  </option>
+          <div class="panel create-member-panel">
+            <form data-type="staff" class="grid-form create-member-form">
+              <label class="field-label">
+                Role
+                <select name="role" id="createRole" required>
+                  <option value="field_officer">Field Officer</option>
+                  <option value="officer">Officer</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="guard">Guard</option>
+                  <option value="admin" class="master-only-option">Admin (Master Admin Only)</option>
                 </select>
               </label>
-            </div>
-            <p class="muted-note">
-              Role select karne par sirf usi role ke added members ki list dikhegi.
-            </p>
+              <label class="field-label">
+                Name
+                <input name="name" placeholder="Full Name" required>
+              </label>
+              <label class="field-label">
+                ID / Staff ID
+                <input name="staff_id" placeholder="Staff ID" required>
+              </label>
+              <label class="field-label">
+                Password
+                <input name="password" type="password" placeholder="Password" required>
+              </label>
+              <label class="field-label">
+                Location Code
+                <select name="location_code" id="createLocation" data-role-location-select required>
+                  <option value="">Select Location Code</option>
+                </select>
+              </label>
+              <label class="field-label">
+                Parent ID
+                <select name="parent_id" id="createParent" required>
+                  <option value="">Select Parent ID</option>
+                </select>
+              </label>
+              <button class="action primary-action create-member-save" type="submit">
+                Create &amp; Save Member
+              </button>
+            </form>
           </div>
-          <div class="panel role-list-panel master-admin-list" id="adminMemberPanel">
-            <h3>
-              Admin List — Master Admin Only
-            </h3>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>
-                      Name
-                    </th>
-                    <th>
-                      ID
-                    </th>
-                    <th>
-                      Post
-                    </th>
-                    <th>
-                      Status
-                    </th>
-                    <th>
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody id="adminRows">
-                </tbody>
-              </table>
+
+          <div class="panel all-members-panel">
+            <div class="all-members-header">
+              <h3>All Members</h3>
+              <span id="allMembersCount" class="member-count">0 Members</span>
             </div>
-          </div>
-          <div class="role-lists">
-            <div class="panel role-list-panel" data-role-list="officer">
-              <h3>
-                Officer List
-              </h3>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>
-                        Name
-                      </th>
-                      <th>
-                        ID
-                      </th>
-                      <th>
-                        Post
-                      </th>
-                      <th>
-                        Department
-                      </th>
-                      <th>
-                        Salary
-                      </th>
-                      <th>
-                        Status
-                      </th>
-                      <th>
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody id="officerRows">
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div class="panel role-list-panel" data-role-list="field_officer">
-              <h3>
-                Field Officer List
-              </h3>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>
-                        Name
-                      </th>
-                      <th>
-                        ID
-                      </th>
-                      <th>
-                        Post
-                      </th>
-                      <th>
-                        Department
-                      </th>
-                      <th>
-                        Salary
-                      </th>
-                      <th>
-                        Status
-                      </th>
-                      <th>
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody id="fieldOfficerRows">
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div class="panel role-list-panel" data-role-list="supervisor">
-              <h3>
-                Supervisor List
-              </h3>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>
-                        Name
-                      </th>
-                      <th>
-                        ID
-                      </th>
-                      <th>
-                        Post
-                      </th>
-                      <th>
-                        Department
-                      </th>
-                      <th>
-                        Salary
-                      </th>
-                      <th>
-                        Status
-                      </th>
-                      <th>
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody id="supervisorRows">
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div class="panel role-list-panel" data-role-list="guard">
-              <h3>
-                Guard List
-              </h3>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>
-                        Name
-                      </th>
-                      <th>
-                        ID
-                      </th>
-                      <th>
-                        Post
-                      </th>
-                      <th>
-                        Department
-                      </th>
-                      <th>
-                        Salary
-                      </th>
-                      <th>
-                        Status
-                      </th>
-                      <th>
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody id="guardRows">
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <div id="allMembersGrid" class="all-members-grid"></div>
           </div>
         </section>
         <!-- END SECTION: SECTION -->

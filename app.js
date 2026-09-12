@@ -150,7 +150,7 @@ if(role==='field_officer'){
     .join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';
 }
 // END SECTION: FIELD OFFICER SUPERVISOR LIST
-window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);fillAdminPresentTargets(s);setupAdminMarkPresent();renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();if(role==='officer')loadOfficerRelieverNotifications();}catch(e){console.log(e.message)}}
+window._attendanceRows=a;renderStaff(s);renderAllMembers(s);renderProfileRecords(s);fillCreateParent(s);fillAdminPresentTargets(s);setupAdminMarkPresent();renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();if(role==='officer')loadOfficerRelieverNotifications();}catch(e){console.log(e.message)}}
 
 // END SECTION: FUNCTION refresh
 
@@ -326,6 +326,39 @@ function renderStaff(list){
 }
 // END SECTION: FUNCTION renderStaff
 
+// =====================================================
+// SECTION: FUNCTION renderAllMembers
+// Premium card list: all members are shown together, 3 cards per row on desktop.
+function renderAllMembers(list){
+  const box=$('#allMembersGrid');
+  const count=$('#allMembersCount');
+  if(!box)return;
+  const rows=Array.isArray(list)?list:[];
+  if(count)count.textContent=`${rows.length} Member${rows.length===1?'':'s'}`;
+  box.innerHTML=rows.map(x=>{
+    const role=label(x.role)||x.role||'Member';
+    const location=Array.isArray(x.assigned_locations)&&x.assigned_locations.length
+      ? x.assigned_locations.join(', ')
+      : (x.location_code||'—');
+    const parent=x.parent_id||'—';
+    const status=x.status||'active';
+    const statusClass=String(status).toLowerCase()==='active'?'active':'inactive';
+    return `<article class="member-card">
+      <div class="member-card-top">
+        <span class="member-role-badge">${escape(role)}</span>
+        <span class="member-status ${statusClass}">${escape(status)}</span>
+      </div>
+      <h4>${escape(x.name||'—')}</h4>
+      <div class="member-card-info">
+        <div><span>🪪 ID</span><b>${escape(x.staff_id||'—')}</b></div>
+        <div><span>📍 Location</span><b>${escape(location)}</b></div>
+        <div><span>👤 Parent ID</span><b>${escape(parent)}</b></div>
+      </div>
+      ${isAdminRole?`<button class="action danger member-delete-btn" onclick="removeStaff(${Number(x.id)})">Delete Member</button>`:''}
+    </article>`;
+  }).join('') || '<div class="empty-members">No members found.</div>';
+}
+// END SECTION: FUNCTION renderAllMembers
 
 // =====================================================
 
