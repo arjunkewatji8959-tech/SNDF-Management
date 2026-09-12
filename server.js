@@ -588,7 +588,7 @@ app.get('/api/profile-update-sheet',auth,roles('admin','master_admin'),(req,res)
 // SECTION: STAFF CREATION + HIERARCHY
 // Director -> Admin -> Field Officer -> Supervisor -> Guard
 // =====================================================
-app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
+app.post('/api/staff',auth,roles('admin','master_admin','field_officer','supervisor'),(req,res)=>{
   const x=req.body||{};
   const role=String(x.role||'').trim().toLowerCase();
   const name=String(x.name||'').trim();
@@ -606,9 +606,17 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
     : (singleLocation ? [singleLocation] : []);
   const masterCreating=req.user.role==='master_admin';
   const adminCreating=req.user.role==='admin';
+  const fieldOfficerCreating=req.user.role==='field_officer';
+  const supervisorCreating=req.user.role==='supervisor';
 
   if(!['admin','field_officer','officer','supervisor','guard'].includes(role))
     return res.status(400).json({error:'Invalid member role'});
+
+  // Creator hierarchy: Director/Admin create operational members;
+  // Field Officer creates Supervisor; Supervisor creates Guard.
+  if(fieldOfficerCreating && role!=='supervisor') return res.status(403).json({error:'Field Officer can create Supervisor only'});
+  if(supervisorCreating && role!=='guard') return res.status(403).json({error:'Supervisor can create Guard only'});
+  if(!masterCreating && !adminCreating && !fieldOfficerCreating && !supervisorCreating) return res.status(403).json({error:'You are not allowed to create members'});
   if(!name||!staffId||!password||!post||!department||!dob||!contact)
     return res.status(400).json({error:'Name, Staff ID, Password, Post, Date of Birth, Department and Phone Number are required'});
   if(password.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});
@@ -634,6 +642,8 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
     return res.status(400).json({error:`${role} can use only one Location Code`});
 
   if(adminCreating && role==='admin')return res.status(403).json({error:'Only Director can create Admin'});
+  if(fieldOfficerCreating && role==='supervisor' && parent!==req.user.staff_id)return res.status(400).json({error:'Supervisor Parent ID must be the logged-in Field Officer ID'});
+  if(supervisorCreating && role==='guard' && parent!==req.user.staff_id)return res.status(400).json({error:'Guard Parent ID must be the logged-in Supervisor ID'});
 
   const continueCreation=()=>get('SELECT id,role,name,staff_id,status FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
     if(duplicateErr)return res.status(500).json({error:duplicateErr.message});
@@ -1663,22 +1673,47 @@ app.post('/api/point-transfers',auth,roles('supervisor','officer','field_officer
   });
 });
 app.put('/api/point-transfers/:id/approve',auth,roles('admin','master_admin'),(req,res)=>{
-  get("SELECT * FROM point_transfer_requests WHERE id=?",[req.params.id],(e,r)=>{
+  get("SELECT p.*,s.parent_id AS staff_parent_id FROM point_transfer_requests p LEFT JOIN staff s ON s.staff_id=p.staff_id WHERE p.id=?",[req.params.id],(e,r)=>{
     if(e)return res.status(500).json({error:e.message});
     if(!r)return res.status(404).json({error:'Transfer request not found'});
     if(r.status!=='Pending')return res.status(409).json({error:'Request already reviewed'});
-    db.serialize(()=>{
-      db.run("UPDATE staff SET location_code=? WHERE staff_id=? AND role IN ('field_officer','officer','supervisor','guard')",[r.to_location,r.staff_id],function(ue){
+    const finishApproval=(newParent)=>{
+      db.run("UPDATE staff SET location_code=?, parent_id=COALESCE(?,parent_id) WHERE staff_id=? AND role IN ('field_officer','officer','supervisor','guard')",[r.to_location,newParent||null,r.staff_id],function(ue){
         if(ue)return res.status(500).json({error:ue.message});
         if(this.changes!==1)return res.status(404).json({error:'Staff member not found'});
         db.run("UPDATE point_transfer_requests SET status='Approved',reviewed_at=?,reviewed_by=? WHERE id=?",[new Date().toISOString(),req.user.staff_id,r.id],(re)=>{
           if(re)return res.status(500).json({error:re.message});
-          audit(req.user,'POINT_TRANSFER_APPROVED',r.staff_id,`${r.from_location||''} -> ${r.to_location}`);
-          notifyStaff(r.staff_id,`Point Transfer Approved: ${r.from_location||'—'} → ${r.to_location}`,'Point Change');
-          res.json({message:'Point transfer approved',staff_id:r.staff_id,new_location:r.to_location});
+          audit(req.user,'POINT_TRANSFER_APPROVED',r.staff_id,`${r.from_location||''} -> ${r.to_location}; parent=${newParent||'unchanged'}`);
+          notifyStaff(r.staff_id,`Point Transfer Approved: ${r.from_location||'—'} → ${r.to_location}${newParent?` • New Parent ID: ${newParent}`:''}`,'Point Change');
+          res.json({message:'Point transfer approved',staff_id:r.staff_id,new_location:r.to_location,new_parent_id:newParent||null});
         });
       });
-    });
+    };
+    // Moving a point also keeps the hierarchy valid: Supervisor gets an active Field Officer
+    // assigned to the destination; Guard gets a Supervisor already working at that point.
+    if(r.staff_role==='supervisor'){
+      const currentParent=String(r.staff_parent_id||'');
+      get("SELECT staff_id FROM staff WHERE staff_id=? AND role='field_officer' AND status='active' AND EXISTS (SELECT 1 FROM location_assignments la WHERE la.staff_id=staff.staff_id AND la.location_code=? AND la.active=1)",[currentParent,r.to_location],(ce,cur)=>{
+        if(ce)return res.status(500).json({error:ce.message});
+        if(cur)return finishApproval(currentParent);
+        get("SELECT s.staff_id FROM staff s JOIN location_assignments la ON la.staff_id=s.staff_id AND la.active=1 AND la.location_code=? WHERE s.role='field_officer' AND s.status='active' ORDER BY s.id LIMIT 1",[r.to_location],(fe,fo)=>{
+          if(fe)return res.status(500).json({error:fe.message});
+          if(!fo)return res.status(400).json({error:'No Field Officer is assigned to the destination Location'});
+          finishApproval(fo.staff_id);
+        });
+      });
+    } else if(r.staff_role==='guard'){
+      const currentParent=String(r.staff_parent_id||'');
+      get("SELECT staff_id FROM staff WHERE staff_id=? AND role='supervisor' AND status='active' AND location_code=?",[currentParent,r.to_location],(ce,cur)=>{
+        if(ce)return res.status(500).json({error:ce.message});
+        if(cur)return finishApproval(currentParent);
+        get("SELECT staff_id FROM staff WHERE role='supervisor' AND status='active' AND location_code=? ORDER BY id LIMIT 1",[r.to_location],(se,sup)=>{
+          if(se)return res.status(500).json({error:se.message});
+          if(!sup)return res.status(400).json({error:'No active Supervisor exists at the destination Location'});
+          finishApproval(sup.staff_id);
+        });
+      });
+    } else finishApproval(null);
   });
 });
 // DIRECT POINT TRANSFER - Admin/Director can change any non-admin staff point by Staff ID without a request.
@@ -1695,16 +1730,37 @@ app.put('/api/point-transfers/direct',auth,roles('admin','master_admin'),(req,re
       if(le)return res.status(500).json({error:le.message});
       if(!loc)return res.status(400).json({error:'Invalid or inactive Location Code'});
       if(String(s.location_code||'')===to)return res.status(400).json({error:'Staff is already assigned to this point'});
-      db.run('UPDATE staff SET location_code=? WHERE staff_id=?',[to,staffId],function(ue){
-        if(ue)return res.status(500).json({error:ue.message});
-        if(this.changes!==1)return res.status(404).json({error:'Staff member not found'});
-        run('INSERT INTO point_transfer_requests(staff_id,staff_name,staff_role,from_location,to_location,reason,status,requested_at,reviewed_at,reviewed_by) VALUES(?,?,?,?,?,?,?,?,?,?)',
-          [s.staff_id,s.name,s.role,s.location_code||'',to,reason||'Direct transfer by Admin','Direct',new Date().toISOString(),new Date().toISOString(),req.user.staff_id],res,()=>{
-            audit(req.user,'POINT_TRANSFER_DIRECT',s.staff_id,`${s.location_code||''} -> ${to}${reason?` | ${reason}`:''}`);
-            notifyStaff(s.staff_id,`Point changed from ${s.location_code||'—'} to ${to}${reason?` • ${reason}`:''}`,'Point Change');
-            res.json({message:`Point changed successfully for ${s.staff_id}`,staff_id:s.staff_id,new_location:to});
+      const saveDirect=(newParent)=>{
+        db.run('UPDATE staff SET location_code=?, parent_id=COALESCE(?,parent_id) WHERE staff_id=?',[to,newParent||null,staffId],function(ue){
+          if(ue)return res.status(500).json({error:ue.message});
+          if(this.changes!==1)return res.status(404).json({error:'Staff member not found'});
+          run('INSERT INTO point_transfer_requests(staff_id,staff_name,staff_role,from_location,to_location,reason,status,requested_at,reviewed_at,reviewed_by) VALUES(?,?,?,?,?,?,?,?,?,?)',
+            [s.staff_id,s.name,s.role,s.location_code||'',to,reason||'Direct transfer by Admin','Direct',new Date().toISOString(),new Date().toISOString(),req.user.staff_id],res,()=>{
+              audit(req.user,'POINT_TRANSFER_DIRECT',s.staff_id,`${s.location_code||''} -> ${to}${newParent?` | parent=${newParent}`:''}${reason?` | ${reason}`:''}`);
+              notifyStaff(s.staff_id,`Point changed from ${s.location_code||'—'} to ${to}${newParent?` • New Parent ID: ${newParent}`:''}${reason?` • ${reason}`:''}`,'Point Change');
+              res.json({message:`Point changed successfully for ${s.staff_id}`,staff_id:s.staff_id,new_location:to,new_parent_id:newParent||null});
+            });
+        });
+      };
+      if(s.role==='supervisor'){
+        const currentParent=String(s.parent_id||'');
+        get("SELECT staff_id FROM staff WHERE staff_id=? AND role='field_officer' AND status='active' AND EXISTS (SELECT 1 FROM location_assignments la WHERE la.staff_id=staff.staff_id AND la.location_code=? AND la.active=1)",[currentParent,to],(ce,cur)=>{
+          if(ce)return res.status(500).json({error:ce.message});
+          if(cur)return saveDirect(currentParent);
+          get("SELECT s2.staff_id FROM staff s2 JOIN location_assignments la ON la.staff_id=s2.staff_id AND la.active=1 AND la.location_code=? WHERE s2.role='field_officer' AND s2.status='active' ORDER BY s2.id LIMIT 1",[to],(fe,fo)=>{
+            if(fe)return res.status(500).json({error:fe.message}); if(!fo)return res.status(400).json({error:'No Field Officer is assigned to the destination Location'}); saveDirect(fo.staff_id);
           });
-      });
+        });
+      } else if(s.role==='guard'){
+        const currentParent=String(s.parent_id||'');
+        get("SELECT staff_id FROM staff WHERE staff_id=? AND role='supervisor' AND status='active' AND location_code=?",[currentParent,to],(ce,cur)=>{
+          if(ce)return res.status(500).json({error:ce.message});
+          if(cur)return saveDirect(currentParent);
+          get("SELECT staff_id FROM staff WHERE role='supervisor' AND status='active' AND location_code=? ORDER BY id LIMIT 1",[to],(se,sup)=>{
+            if(se)return res.status(500).json({error:se.message}); if(!sup)return res.status(400).json({error:'No active Supervisor exists at the destination Location'}); saveDirect(sup.staff_id);
+          });
+        });
+      } else saveDirect(null);
     });
   });
 });

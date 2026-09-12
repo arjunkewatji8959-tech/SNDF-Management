@@ -781,16 +781,31 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
     }
     if(form.dataset.type==='staff'){
       // Only Admin and Director can create operational members.
-      if(!['admin','master_admin'].includes(user?.role)) throw Error('Only Admin or Director can create members');
+      if(!['admin','master_admin','field_officer','supervisor'].includes(user?.role)) throw Error('You are not allowed to create members');
 
       const locationInput=$('#createLocation');
+      const parentInput=$('#createParent');
       const typedLocation=String(locationInput?.value||d.location_code||'').trim();
-      const selectedLocations=typedLocation ? [typedLocation] : [];
+      let selectedLocations=typedLocation ? [typedLocation] : [];
       d.location_codes=selectedLocations;
       d.location_code=typedLocation;
-      // Field Officer and Officer created by a normal Admin always belong to that Admin.
-      if(user?.role==='admin' && ['field_officer','officer'].includes(d.role)) d.parent_id=user.staff_id;
 
+      // Set role-specific parent before sending. Normal Admin always owns its Field Officer/Officer.
+      if(['admin','field_officer','supervisor'].includes(user?.role) && ((user.role==='admin' && ['field_officer','officer'].includes(d.role)) || (user.role==='field_officer' && d.role==='supervisor') || (user.role==='supervisor' && d.role==='guard'))) d.parent_id=user.staff_id;
+      if(user?.role==='master_admin' && d.role==='admin') d.parent_id='adi123';
+      if(parentInput && d.parent_id) parentInput.value=d.parent_id;
+
+      // Field Officer and Officer may be created without a work location.
+      // Their locations are assigned later from Location Distribution.
+      if(['field_officer','officer'].includes(d.role) && !typedLocation){
+        selectedLocations=[];
+        d.location_codes=[];
+        d.location_code='';
+      }
+
+      // Creator-specific validation.
+      if(user?.role==='field_officer' && d.role==='supervisor'){ d.parent_id=user.staff_id; if(!selectedLocations.length) throw Error('Location Code is required for Supervisor'); }
+      if(user?.role==='supervisor' && d.role==='guard'){ d.parent_id=user.staff_id; if(!selectedLocations.length) throw Error('Location Code is required for Guard'); }
       // Normal Admin must create every operational role with Parent ID + Location.
       if(user?.role==='admin' && d.role!=='admin'){
         if(!String(d.parent_id||'').trim()) throw Error(`Parent ID is required for ${d.role}`);
@@ -1361,7 +1376,7 @@ $('#logout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser'
 loadProfile();refresh();
 if($('#p_staff_id')) $('#p_staff_id').value=user.staff_id;
 if(!isAdminRole && !['field_officer','supervisor'].includes(role)){ $('#staff')?.remove(); $('#advance')?.remove(); $('#suspend')?.remove(); $('#profile-records')?.remove(); }
-if(role==='field_officer'){$('#team-management form[data-type="staff"]')?.remove();$('#team-management h3')?.remove();$('#team-management .muted-note')?.remove();}
+if(role==='field_officer'){const f=$('#team-management form[data-type="staff"]'); if(f){const p=f.querySelector('input[name="parent_id"]'); if(p)p.value=user.staff_id;}}
 if(role==='officer'){['team-attendance','team-management','tasks'].forEach(id=>$('#'+id)?.remove());document.querySelectorAll('[data-view="team-attendance"],[data-view="team-management"],[data-view="tasks"]').forEach(x=>x.remove());loadMessages();}
 if(!isAdminRole) $$('[onclick^="downloadAttendance"]').forEach(b=>b.remove());
 if(!['admin','field_officer','officer'].includes(role)) $('#fine')?.querySelector('.fine-form')?.remove();
