@@ -49,3 +49,7 @@ See `HOSTINGER_DEPLOYMENT.md` for the Node.js Web App deployment steps. The app 
 
 ## Final member/location build
 See `FINAL_MEMBER_LOCATION_BACKEND.md` for the exact hierarchy, validation, persistence and Railway test order.
+
+
+## Member Create Backend Repair
+The `/api/staff` endpoint has been hardened for production member creation, strict parent hierarchy, location validation, duplicate-ID detection, and rollback on assignment failure. The frontend now preserves and displays the backend error response.

@@ -2,7 +2,9 @@
 // SNDF MANAGEMENT | JAVASCRIPT SECTIONS
 // File-level guide: keep each feature inside its marked section.
 // =====================================================
-const API_URL='/api';
+const API_URL=(location.hostname==='localhost'||location.hostname==='127.0.0.1')
+  ? '/api'
+  : 'https://sndf-management-production.up.railway.app/api';
 const user=JSON.parse(sessionStorage.getItem('sndfUser')||'null');
 const role=document.body.dataset.role;
 if(!user||!role||!(user.role===role || (role==='admin'&&user.role==='master_admin'))) location.replace('login.html?role='+encodeURIComponent(role||'admin'));
@@ -28,7 +30,7 @@ $('.mobile-toggle')?.addEventListener('click',()=>$('.sidebar')?.classList.toggl
 // =====================================================
 async function api(path,opt={}
 // END SECTION: FUNCTION api
-){const r=await fetch(API_URL+path,{headers:{'Content-Type':'application/json','x-staff-id':user.staff_id,'x-role':user.role,...(opt.headers||{})},...opt});const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{throw Error('Backend response error')};if(!r.ok)throw Error(d.error||'Request failed');return d}
+){const r=await fetch(API_URL+path,{...opt,headers:{'Content-Type':'application/json','x-staff-id':user.staff_id,'x-role':user.role,...(opt.headers||{})}});const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{throw Error('Backend response error (HTTP '+r.status+')')};if(!r.ok)throw Error(d.error||('Request failed (HTTP '+r.status+')'));return d}
 // =====================================================
 // SECTION: FUNCTION msg
 // =====================================================
@@ -41,28 +43,65 @@ const createRoleSelect=$('form[data-type="staff"] select[name="role"]');
 
 // =====================================================
 // SECTION: STAFF CREATION UI HIERARCHY
-// Director -> Admin -> Field Officer -> Supervisor -> Guard
 // =====================================================
 if(createRoleSelect){
-  // Only Director and Admin can create members.
-  // Director can create Admin/Field Officer/Supervisor/Guard.
-  // Admin can create Field Officer/Supervisor/Guard.
   const allowedByRole={
     master_admin:['admin','field_officer','officer','supervisor','guard'],
-    admin:['field_officer','officer','supervisor','guard']
+    admin:['field_officer','officer'],
+    field_officer:['supervisor'],
+    supervisor:['guard']
   };
   const allowed=allowedByRole[user?.role]||[];
-  [...createRoleSelect.options].forEach(o=>{ if(!allowed.includes(o.value)) o.remove(); });
+  [...createRoleSelect.options].forEach(o=>{
+    o.hidden=!allowed.includes(o.value);
+    o.disabled=!allowed.includes(o.value);
+  });
   if(allowed.length) createRoleSelect.value=allowed[0];
+
+  const syncRoleFields=()=>{
+    const rv=String(createRoleSelect.value||'');
+    const parent=$('#createParent');
+    const loc=$('#createLocation');
+    const dept=$('#createDepartment');
+    const post=$('#createPost');
+    const parentList=$('#createParentOptions');
+
+    if(dept){
+      const map={admin:'ADMIN',field_officer:'FIELD OFFICER',officer:'OFFICER',supervisor:'SUPERVISOR',guard:'GUARD'};
+      dept.value=map[rv]||dept.value;
+    }
+    if(post && !post.value){
+      const map={admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'};
+      post.value=map[rv]||'';
+    }
+
+    const autoParent=
+      (user.role==='master_admin'&&rv==='admin')?'adi123':
+      (user.role==='admin'&&['field_officer','officer'].includes(rv))?user.staff_id:
+      (user.role==='field_officer'&&rv==='supervisor')?user.staff_id:
+      (user.role==='supervisor'&&rv==='guard')?user.staff_id:'';
+
+    if(parent){
+      parent.value=autoParent;
+      parent.readOnly=!!autoParent;
+      parent.required=true;
+    }
+    if(loc){
+      loc.required=['supervisor','guard'].includes(rv);
+    }
+    fillCreateParent(staff);
+    // fillCreateParent may populate the datalist; restore the hierarchy-determined parent.
+    if(parent && autoParent) parent.value=autoParent;
+  };
+  createRoleSelect.addEventListener('change',syncRoleFields);
+  setTimeout(syncRoleFields,0);
 }
 
-// Dedicated role pages must always send the logged-in parent ID.
 const staffCreateForm=$('form[data-type="staff"]');
 if(staffCreateForm && ['field_officer','supervisor'].includes(user?.role)){
   const parentInput=staffCreateForm.querySelector('input[name="parent_id"]');
-  if(parentInput) parentInput.value=user.staff_id||'';
+  if(parentInput){ parentInput.value=user.staff_id||''; parentInput.readOnly=true; }
 }
-
 // END SECTION: STAFF CREATION UI HIERARCHY
 let staff=[];
 
@@ -361,7 +400,7 @@ function fillCreateParent(list){
   // Location Code is always manually entered. Active locations are only suggestions.
   if(locInput){
     locInput.disabled=false;
-    locInput.required=!['field_officer','officer'].includes(roleVal);
+    locInput.required=!['admin','field_officer','officer'].includes(roleVal);
     locInput.setAttribute('list','createLocationOptions');
     if(locList)locList.innerHTML=activeLocations.map(x=>`<option value="${escape(x.code)}">${escape(x.code)} — ${escape(x.name||'')}</option>`).join('');
   }
@@ -780,65 +819,111 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       delete d.reason_select; delete d.reason_custom;
     }
     if(form.dataset.type==='staff'){
-      // Only Admin and Director can create operational members.
-      if(!['admin','master_admin','field_officer','supervisor'].includes(user?.role)) throw Error('You are not allowed to create members');
+      delete window.__lastCreatedStaff;
+      // =====================================================
+      // MEMBER CREATE | STRICT CREATOR HIERARCHY
+      // Master Admin -> Admin/Field Officer/Officer/Supervisor/Guard
+      // Admin -> Field Officer/Officer
+      // Field Officer -> Supervisor
+      // Supervisor -> Guard
+      // =====================================================
+      const creator=String(user?.role||'');
+      const targetRole=String(d.role||'').trim().toLowerCase();
+      const allowedByCreator={
+        master_admin:['admin','field_officer','officer','supervisor','guard'],
+        admin:['field_officer','officer'],
+        field_officer:['supervisor'],
+        supervisor:['guard']
+      };
+      const allowed=allowedByCreator[creator]||[];
+      if(!allowed.includes(targetRole))
+        throw Error(`You cannot create ${label(targetRole)}. Allowed role: ${allowed.map(label).join(', ')||'None'}`);
 
       const locationInput=$('#createLocation');
       const parentInput=$('#createParent');
       const typedLocation=String(locationInput?.value||d.location_code||'').trim();
-      let selectedLocations=typedLocation ? [typedLocation] : [];
+      let selectedLocations=typedLocation?[typedLocation]:[];
       d.location_codes=selectedLocations;
       d.location_code=typedLocation;
 
-      // Set role-specific parent before sending. Normal Admin always owns its Field Officer/Officer.
-      if(['admin','field_officer','supervisor'].includes(user?.role) && ((user.role==='admin' && ['field_officer','officer'].includes(d.role)) || (user.role==='field_officer' && d.role==='supervisor') || (user.role==='supervisor' && d.role==='guard'))) d.parent_id=user.staff_id;
-      if(user?.role==='master_admin' && d.role==='admin') d.parent_id='adi123';
+      // Parent is automatic wherever hierarchy determines it.
+      if((creator==='admin') && ['field_officer','officer'].includes(targetRole))
+        d.parent_id=user.staff_id;
+      else if(creator==='field_officer' && targetRole==='supervisor')
+        d.parent_id=user.staff_id;
+      else if(creator==='supervisor' && targetRole==='guard')
+        d.parent_id=user.staff_id;
+      else if(creator==='master_admin' && targetRole==='admin')
+        d.parent_id='adi123';
+
       if(parentInput && d.parent_id) parentInput.value=d.parent_id;
 
-      // Field Officer and Officer may be created without a work location.
-      // Their locations are assigned later from Location Distribution.
-      if(['field_officer','officer'].includes(d.role) && !typedLocation){
+      // Field Officer / Officer are assigned work locations later.
+      if(['field_officer','officer'].includes(targetRole) && !typedLocation){
         selectedLocations=[];
         d.location_codes=[];
         d.location_code='';
       }
 
-      // Creator-specific validation.
-      if(user?.role==='field_officer' && d.role==='supervisor'){ d.parent_id=user.staff_id; if(!selectedLocations.length) throw Error('Location Code is required for Supervisor'); }
-      if(user?.role==='supervisor' && d.role==='guard'){ d.parent_id=user.staff_id; if(!selectedLocations.length) throw Error('Location Code is required for Guard'); }
-      // Normal Admin must create every operational role with Parent ID + Location.
-      if(user?.role==='admin' && d.role!=='admin'){
-        if(!String(d.parent_id||'').trim()) throw Error(`Parent ID is required for ${d.role}`);
-        if(!['field_officer','officer'].includes(d.role) && !selectedLocations.length) throw Error(`Location Code is required for ${d.role}`);
-        if(['supervisor','guard','officer'].includes(d.role) && selectedLocations.length!==1)
-          throw Error(`${d.role} can use only one Location Code`);
+      // A Supervisor can only use a location already assigned to its Field Officer.
+      if(creator==='field_officer' && targetRole==='supervisor' && !typedLocation)
+        throw Error('Supervisor ke liye Field Officer ki assigned Location Code select/enter karein.');
+
+      // Guard must use the Supervisor's exact location.
+      if(creator==='supervisor' && targetRole==='guard' && !typedLocation)
+        throw Error('Guard ke liye Supervisor ki Location Code select/enter karein.');
+
+      // Master Admin creating Supervisor/Guard must supply valid parent + one location.
+      if(creator==='master_admin' && ['supervisor','guard'].includes(targetRole)){
+        if(!String(d.parent_id||'').trim()) throw Error(`${label(targetRole)} ke liye Parent ID required hai.`);
+        if(selectedLocations.length!==1) throw Error(`${label(targetRole)} ke liye exactly one Location Code required hai.`);
       }
-      if(['supervisor','guard'].includes(d.role)){
-        if(!String(d.location_code||'').trim()) throw Error(`Location Code is required for ${d.role}`);
-        if(!String(d.parent_id||'').trim()) throw Error(`Parent ID is required for ${d.role}`);
-      }
-      d.name=String(d.name||'').trim(); d.staff_id=String(d.staff_id||'').trim(); d.post=String(d.post||'').trim(); d.department=String(d.department||'').trim(); d.dob=String(d.dob||'').trim(); d.contact_number=String(d.contact_number||'').trim();
-      if(!d.name||!d.staff_id||!d.password||!d.post||!d.department||!d.dob||!d.contact_number) throw Error('Name, ID, Password, Post, Date of Birth, Department and Phone Number are required');
+
+      d.name=String(d.name||'').trim();
+      d.staff_id=String(d.staff_id||'').trim();
+      d.password=String(d.password||'');
+      d.post=String(d.post||'').trim();
+      d.department=String(d.department||'').trim();
+      d.dob=String(d.dob||'').trim();
+      d.contact_number=String(d.contact_number||'').trim();
+
+      // Core account fields are required. DOB/department/phone are profile fields and
+      // must not prevent creation of a new Admin/member; they can be completed later.
+      if(!d.name||!d.staff_id||!d.password||!d.post)
+        throw Error('Name, Staff ID, Password and Post are required');
+      d.department=d.department||label(targetRole).toUpperCase();
+      d.dob=d.dob||'';
+      d.contact_number=d.contact_number||'';
+      if(d.password.length<6) throw Error('Password must be at least 6 characters');
       if(Number(d.salary||0)<0) throw Error('Salary cannot be negative');
-      if(!/^\+?[0-9\s()-]{10,20}$/.test(d.contact_number)) throw Error('Enter a valid phone number');
-      if(!d.parent_id && d.role!=='admin') throw Error('Select Parent ID');
-      if(d.role==='admin' && user?.role==='master_admin') d.parent_id='adi123';
-      if(!selectedLocations.length && !['field_officer','officer'].includes(d.role)) throw Error('Select at least one Location Code');
-      const created = await api('/staff',{method:'POST',body:JSON.stringify(d)});
-      window.__lastCreatedStaff = {
-        staff_id: created.staff_id||d.staff_id,
-        role: created.role||d.role,
-        name: created.name||d.name,
-        database_id: created.id,
-        post: created.post||d.post,
-        salary: created.salary??d.salary,
-        dob: created.dob||d.dob,
-        department: created.department||d.department,
-        location_code: created.location_code||d.location_code,
-        location_codes: created.location_codes||d.location_codes||[],
-        parent_id: created.parent_id||d.parent_id||'',
-        contact_number: created.contact_number||d.contact_number
+      if(!/^\+?[0-9\s()-]{10,20}$/.test(d.contact_number))
+        throw Error('Enter a valid phone number');
+
+      if(targetRole!=='admin' && !String(d.parent_id||'').trim())
+        throw Error(`${label(targetRole)} ke liye Parent ID required hai.`);
+
+      if(targetRole==='admin'){
+        if(creator!=='master_admin') throw Error('Only Master Admin can create Admin.');
+        d.parent_id='adi123';
+      }
+
+      if(['supervisor','guard'].includes(targetRole) && selectedLocations.length!==1)
+        throw Error(`${label(targetRole)} ke liye exactly one Location Code select karein.`);
+
+      const created=await api('/staff',{method:'POST',body:JSON.stringify(d)});
+      window.__lastCreatedStaff={
+        staff_id:created.staff_id||d.staff_id, role:created.role||targetRole,
+        name:created.name||d.name, database_id:created.id, post:created.post||d.post,
+        salary:created.salary??d.salary, dob:created.dob||d.dob,
+        department:created.department||d.department,
+        location_code:created.location_code||d.location_code,
+        location_codes:created.assigned_locations||created.location_codes||d.location_codes||[],
+        parent_id:created.parent_id||d.parent_id||'',
+        contact_number:created.contact_number||d.contact_number
       };
+      // =====================================================
+      // END MEMBER CREATE
+      // =====================================================
     }
     if(form.dataset.type==='fine')await api('/fines',{method:'POST',body:JSON.stringify(d)});
     if(form.dataset.type==='advance')await api('/advances',{method:'POST',body:JSON.stringify(d)});
