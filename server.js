@@ -176,6 +176,11 @@ db.serialize(()=>{
     id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT NOT NULL, message TEXT NOT NULL,
     created_at TEXT NOT NULL, read_at TEXT
   )`);
+  // STAFF MESSAGE BOX - direct in-app notifications for Reliever/Point/other events.
+  db.run(`CREATE TABLE IF NOT EXISTS staff_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT NOT NULL, message TEXT NOT NULL,
+    message_type TEXT DEFAULT 'General', created_at TEXT NOT NULL, read_at TEXT
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS help_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT, from_role TEXT, message TEXT, response TEXT,
     created_at TEXT
@@ -274,7 +279,7 @@ db.serialize(()=>{
 
   db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active)
     SELECT staff_id,location_code,'system-migration',1 FROM staff
-    WHERE role IN ('admin','field_officer') AND TRIM(COALESCE(location_code,''))<>''`);
+    WHERE role IN ('admin','field_officer','officer') AND TRIM(COALESCE(location_code,''))<>''`);
 
 
   // DIRECTOR bootstrap:
@@ -491,6 +496,13 @@ function auth(req,res,next){
 // SECTION: FUNCTION roles
 // =====================================================
 function roles(...allowed){ return (req,res,next)=>allowed.includes(req.user.role) ? next() : res.status(403).json({error:`Only ${allowed.join(' or ')} can perform this action`}); }
+// Direct staff message helper. Failures are logged but never break the main operation.
+function notifyStaff(staffId,message,type='General'){
+  if(!staffId||!message)return;
+  db.run('INSERT INTO staff_messages(staff_id,message,message_type,created_at,read_at) VALUES(?,?,?,?,NULL)',[String(staffId),String(message),String(type),new Date().toISOString()],err=>{
+    if(err) console.warn('staff message save failed:',err.message);
+  });
+}
 // END SECTION: FUNCTION roles
 
 
@@ -509,11 +521,34 @@ app.get('/api/staff',auth,(req,res)=>{
         let out=list.map(r=>({...r,assigned_locations:by[r.staff_id]||[]}));
         if(req.user.role==='master_admin')return res.json(out);
         if(req.user.role==='admin') {
-          const mine=new Set(by[req.user.staff_id]||[]);
-          out=out.filter(r=>r.staff_id===req.user.staff_id || r.role==='master_admin' || (r.role==='field_officer'&&(by[r.staff_id]||[]).some(x=>mine.has(x))) || (['officer','supervisor','guard'].includes(r.role)&&mine.has(r.location_code)));
+          // Admin has full operational access, but cannot manage/view another Admin account as a child.
+          out=out.filter(r=>r.role!=='admin' || r.staff_id===req.user.staff_id);
         } else if(req.user.role==='field_officer') {
           const mine=new Set(by[req.user.staff_id]||[]);
           out=out.filter(r=>r.staff_id===req.user.staff_id || ((r.role==='supervisor'||r.role==='guard') && mine.has(r.location_code) && (r.role==='supervisor'?r.parent_id===req.user.staff_id:true)));
+        } else if(req.user.role==='officer') {
+          // Officer works under its Admin, like a Field Officer.
+          // Its own attendance remains Main Office, while operational visibility is
+          // limited to the locations assigned to this Officer.
+          const adminId=String(req.user.parent_id||'');
+          const mine=new Set((by[req.user.staff_id]||[]).map(code=>String(code).toLowerCase()));
+          const byId=new Map(out.map(r=>[r.staff_id,r]));
+          const underAdmin=(r)=>{
+            if(r.staff_id===req.user.staff_id)return true;
+            let cur=r, seen=new Set();
+            while(cur && cur.parent_id && !seen.has(cur.staff_id)){
+              if(String(cur.parent_id)===adminId)return true;
+              seen.add(cur.staff_id); cur=byId.get(cur.parent_id);
+            }
+            return false;
+          };
+          out=out.filter(r=>{
+            if(r.staff_id===req.user.staff_id)return true;
+            if(!underAdmin(r) || r.role==='admin' || r.role==='master_admin')return false;
+            // Officer sees operational members only when their location is one of
+            // the Officer's assigned work locations.
+            return mine.has(String(r.location_code||'').toLowerCase());
+          });
         } else if(req.user.role==='supervisor') {
           out=out.filter(r=>r.staff_id===req.user.staff_id || (r.role==='guard' && (r.parent_id===req.user.staff_id || r.reliever_parent_id===req.user.staff_id)));
         } else if(req.user.role==='guard') out=out.filter(r=>r.staff_id===req.user.staff_id);
@@ -582,9 +617,9 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   if(!/^\+?[0-9\s()-]{10,20}$/.test(contact))return res.status(400).json({error:'Enter a valid phone number'});
 
   // Strict hierarchy: Director -> Admin -> Field Officer/Officer -> Supervisor -> Guard.
-  // Director may create every role, but every created member still gets a real parent.
+  // Master Admin may create an operational role, but its parent must still be an Admin.
   if(role==='admin'){
-    if(!masterCreating)return res.status(403).json({error:'Only Director can create Admin'});
+    if(!masterCreating)return res.status(403).json({error:'Only Master Admin can create Admin'});
     if(parent && parent!=='adi123')return res.status(400).json({error:'Admin Parent ID must be Director ID adi123'});
   }else{
     if(!parent)return res.status(400).json({error:`Parent ID is required for ${role}`});
@@ -593,14 +628,14 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   // Field Officer location is optional at creation time: it is a management scope,
   // not the attendance point. The Field Officer checks in/out only at Main Office.
   // Admin/Field Officer locations can be assigned later through Location Distribution.
-  if(role!=='field_officer' && !requestedLocations.length)
+  if(!['field_officer','officer'].includes(role) && !requestedLocations.length)
     return res.status(400).json({error:`Location Code is required for ${role}`});
-  if(['officer','supervisor','guard'].includes(role) && requestedLocations.length!==1)
+  if(['supervisor','guard'].includes(role) && requestedLocations.length!==1)
     return res.status(400).json({error:`${role} can use only one Location Code`});
 
   if(adminCreating && role==='admin')return res.status(403).json({error:'Only Director can create Admin'});
 
-  get('SELECT id,role,name,staff_id,status FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
+  const continueCreation=()=>get('SELECT id,role,name,staff_id,status FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
     if(duplicateErr)return res.status(500).json({error:duplicateErr.message});
     if(duplicate)return res.status(409).json({error:`Staff ID ${staffId} already exists. Use a unique Staff ID.`});
 
@@ -658,14 +693,10 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
         const valid=new Set((rows||[]).map(r=>String(r.code)));
         const invalid=requestedLocations.filter(c=>!valid.has(c));
         if(invalid.length)return res.status(400).json({error:'Invalid or inactive Location Code: '+invalid.join(', ')});
-        if(masterCreating)return next();
-        db.all(`SELECT location_code FROM location_assignments WHERE staff_id=? AND active=1 AND location_code IN (${placeholders})`,[req.user.staff_id,...requestedLocations],(ae,owned)=>{
-          if(ae)return res.status(500).json({error:ae.message});
-          const ownedSet=new Set((owned||[]).map(r=>String(r.location_code)));
-          const notOwned=requestedLocations.filter(c=>!ownedSet.has(c));
-          if(notOwned.length)return res.status(403).json({error:'Admin can use only its assigned locations: '+notOwned.join(', ')});
-          next();
-        });
+        // Master Admin and Admin have full location access. Field Officer/Officer assignments
+        // are controlled through Location Distribution.
+        if(masterCreating || adminCreating)return next();
+        next();
       });
     };
 
@@ -688,7 +719,7 @@ app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
     // No location is required for a new Field Officer. If a manual initial location
     // was entered, validate and assign it; otherwise create the officer with no scope
     // and let Admin/Director assign locations later.
-    if(role==='field_officer' && requestedLocations.length===0) return validateParent(()=>createRecord());
+    if(['field_officer','officer'].includes(role) && requestedLocations.length===0) return validateParent(()=>createRecord());
     validateParent(parentRow=>validateLocations(()=>validateRoleLocation(parentRow,createRecord)));
   });
 });
@@ -898,7 +929,9 @@ app.post('/api/relievers/assign',auth,roles('admin','master_admin'),async(req,re
       if(le)return res.status(500).json({error:le.message}); if(!lr)return res.status(400).json({error:'Invalid or inactive Location Code'});
       run('UPDATE staff SET is_reliever=1,location_code=?,reliever_duty_hours=?,reliever_shift=? WHERE id=?',[location,dutyHours,shift,s.id],res,async()=>{
         // Save an in-app notification for the assigned reliever.
-        db.run('INSERT INTO reliever_notifications(staff_id,message,created_at,read_at) VALUES(?,?,?,NULL)',[s.staff_id,`Reliever Duty assigned at ${location} • ${dutyHours} Hours • ${shift}`,new Date().toISOString()]);
+        const relieverMessage=`Reliever Duty assigned at ${location} • ${dutyHours} Hours • ${shift}`;
+        db.run('INSERT INTO reliever_notifications(staff_id,message,created_at,read_at) VALUES(?,?,?,NULL)',[s.staff_id,relieverMessage,new Date().toISOString()]);
+        notifyStaff(s.staff_id,relieverMessage,'Reliever');
         const text=`SNDF MANAGEMENT – Reliever Duty\n\nHello ${s.name},\nYou have been assigned as a RELIEVER.\n\nLocation: ${location}\nDuty Hours: ${dutyHours} Hours\nShift: ${shift} (${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end})\nStaff ID: ${s.staff_id}\nAssigned by: ${req.user.name||req.user.staff_id}\n\nPlease report to the assigned location and complete live attendance check-in.\n\nSNDF Support Services\nWhatsApp: ${process.env.WHATSAPP_SENDER_NUMBER||'8959872715'}`;
         const wa=await sendWhatsAppMessage(s.contact_number,text);
         audit(req.user,'RELIEVER_ASSIGNED',s.staff_id,`${location}; ${dutyHours} hour; ${shift}; whatsapp=${wa.sent?'sent':'not-sent'}`);
@@ -916,9 +949,15 @@ app.get('/api/relievers',auth,roles('admin','master_admin','field_officer'),(req
 });
 app.put('/api/staff/:id/reliever',auth,roles('admin','master_admin'),(req,res)=>{
   const enabled=Number(req.body?.is_reliever)?1:0;
-  run('UPDATE staff SET is_reliever=?,reliever_parent_id=? WHERE id=?',[enabled,enabled?'':null,req.params.id],res,()=>{
-    audit(req.user,enabled?'RELIEVER_ENABLED':'RELIEVER_DISABLED',req.params.id,enabled?'Marked as reliever':'Removed from reliever list');
-    res.json({message:enabled?'Member marked as Reliever':'Member removed from Reliever list'});
+  get('SELECT staff_id,name FROM staff WHERE id=?',[req.params.id],(ge,member)=>{
+    if(ge)return res.status(500).json({error:ge.message});
+    if(!member)return res.status(404).json({error:'Staff not found'});
+    run('UPDATE staff SET is_reliever=?,reliever_parent_id=? WHERE id=?',[enabled,enabled?'':null,req.params.id],res,()=>{
+      const text=enabled?'You have been marked as a Reliever.':'Your Reliever status has been removed.';
+      notifyStaff(member.staff_id,text,'Reliever');
+      audit(req.user,enabled?'RELIEVER_ENABLED':'RELIEVER_DISABLED',req.params.id,enabled?'Marked as reliever':'Removed from reliever list');
+      res.json({message:enabled?'Member marked as Reliever':'Member removed from Reliever list'});
+    });
   });
 });
 app.put('/api/staff/:id/location',auth,roles('admin','master_admin'),(req,res)=>{
@@ -931,7 +970,11 @@ app.put('/api/staff/:id/location',auth,roles('admin','master_admin'),(req,res)=>
     if(e)return res.status(500).json({error:e.message}); if(!s)return res.status(404).json({error:'Staff not found'});
     if(!['officer','guard','supervisor'].includes(s.role))return res.status(400).json({error:'Reliever location can be changed only for Officer/Guard/Supervisor'});
     const saveLocation=(relieverParent)=>{
-      run('UPDATE staff SET location_code=?,reliever_parent_id=? WHERE id=?',[location,relieverParent||'',s.id],res,()=>{audit(req.user,'RELIEVER_LOCATION_CHANGED',s.staff_id,`${location}; reliever parent=${relieverParent||''}`);res.json({message:'Location changed',location_code:location,reliever_parent_id:relieverParent||''});});
+      run('UPDATE staff SET location_code=?,reliever_parent_id=? WHERE id=?',[location,relieverParent||'',s.id],res,()=>{
+        notifyStaff(s.staff_id,`Reliever Location changed to ${location}.`,'Point Change');
+        audit(req.user,'RELIEVER_LOCATION_CHANGED',s.staff_id,`${location}; reliever parent=${relieverParent||''}`);
+        res.json({message:'Location changed',location_code:location,reliever_parent_id:relieverParent||''});
+      });
     };
     get("SELECT staff_id FROM staff WHERE role='supervisor' AND location_code=? AND status='active' ORDER BY id LIMIT 1",[location],(pe,sp)=>{
       if(pe)return res.status(500).json({error:pe.message});
@@ -1360,7 +1403,7 @@ app.post('/api/attendance',auth,(req,res)=>{
     // Field Officers are mobile operational staff: their attendance is always recorded
     // at the designated Main Office, while their assigned locations are management scope only.
     const resolveAttendanceLocation=(cb)=>{
-      if(['master_admin','admin','field_officer'].includes(s.role)){
+      if(['master_admin','admin','field_officer','officer'].includes(s.role)){
         return get('SELECT * FROM locations WHERE active=1 AND is_main_office=1 LIMIT 1',[],(oe,office)=>{
           if(oe)return cb(oe);
           if(!office)return res.status(400).json({error:'Main Office is not configured. Please ask Admin/Director to mark one location as Main Office.'});
@@ -1508,9 +1551,9 @@ app.get('/api/attendance/export',auth,roles('admin','master_admin'),(req,res)=>{
   all(sql,params,{json:x=>{ const rows=x; const header='Date,Staff ID,Name,Role,Location Code,Duty Hours,Shift,Check In,Check Out,Hours,Status,Attendance Location'; const csv=[header,...rows.map(r=>[r.date,r.staff_id,r.name,r.role,r.location_code,r.duty_hours,r.shift,r.check_in,r.check_out,r.hours_worked,r.attendance_status,r.location].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\n'); res.setHeader('Content-Type','text/csv'); res.setHeader('Content-Disposition',`attachment; filename="${roleFilter||'all'}-${dateFilter||'all'}-attendance.csv"`); res.send(csv); }});
 });
 
-// FINES - Admin and Field Officer can issue fines to Guard or Supervisor. Others can view.
+// FINES - Admin, Field Officer and Officer can issue fines to Guard or Supervisor. Others can view.
 app.get('/api/fines',auth,(req,res)=>{ const sql=['admin','master_admin'].includes(req.user.role) ? 'SELECT * FROM fines ORDER BY id DESC' : 'SELECT * FROM fines WHERE guard_id=? ORDER BY id DESC'; all(sql,['admin','master_admin'].includes(req.user.role)?[]:[req.user.staff_id],res); });
-app.post('/api/fines',auth,roles('admin','master_admin','field_officer'),(req,res)=>{
+app.post('/api/fines',auth,roles('admin','master_admin','field_officer','officer'),(req,res)=>{
   const x=req.body||{}; const targetId=String(x.target_id||'').trim();
   if(!targetId||!x.reason||Number(x.amount)<=0)return res.status(400).json({error:'Target ID, reason and positive fine amount are required'});
   get('SELECT role FROM staff WHERE staff_id=?',[targetId],(err,s)=>{
@@ -1597,6 +1640,16 @@ app.post('/api/point-transfers',auth,roles('supervisor','officer','field_officer
     if(e) return res.status(500).json({error:e.message});
     const allowed = !!loc;
     if(!allowed) return res.status(400).json({error:'Invalid Location Code'});
+    if(req.user.role==='officer'){
+      return get("SELECT 1 FROM location_assignments WHERE staff_id=? AND location_code=? AND active=1",
+        [req.user.staff_id,to],(ae,assigned)=>{
+          if(ae)return res.status(500).json({error:ae.message});
+          if(!assigned)return res.status(403).json({error:'Officer can request point transfer only to one of its assigned work locations'});
+          continueTransfer();
+        });
+    }
+    continueTransfer();
+    function continueTransfer(){
     get("SELECT id FROM point_transfer_requests WHERE staff_id=? AND status='Pending'",[req.user.staff_id],(pe,pending)=>{
       if(pe)return res.status(500).json({error:pe.message});
       if(pending)return res.status(409).json({error:'A point transfer request is already pending'});
@@ -1606,6 +1659,7 @@ app.post('/api/point-transfers',auth,roles('supervisor','officer','field_officer
           res.status(201).json({id:row.lastID,message:'Point transfer request sent to Admin'});
         });
     });
+    }
   });
 });
 app.put('/api/point-transfers/:id/approve',auth,roles('admin','master_admin'),(req,res)=>{
@@ -1620,6 +1674,7 @@ app.put('/api/point-transfers/:id/approve',auth,roles('admin','master_admin'),(r
         db.run("UPDATE point_transfer_requests SET status='Approved',reviewed_at=?,reviewed_by=? WHERE id=?",[new Date().toISOString(),req.user.staff_id,r.id],(re)=>{
           if(re)return res.status(500).json({error:re.message});
           audit(req.user,'POINT_TRANSFER_APPROVED',r.staff_id,`${r.from_location||''} -> ${r.to_location}`);
+          notifyStaff(r.staff_id,`Point Transfer Approved: ${r.from_location||'—'} → ${r.to_location}`,'Point Change');
           res.json({message:'Point transfer approved',staff_id:r.staff_id,new_location:r.to_location});
         });
       });
@@ -1646,6 +1701,7 @@ app.put('/api/point-transfers/direct',auth,roles('admin','master_admin'),(req,re
         run('INSERT INTO point_transfer_requests(staff_id,staff_name,staff_role,from_location,to_location,reason,status,requested_at,reviewed_at,reviewed_by) VALUES(?,?,?,?,?,?,?,?,?,?)',
           [s.staff_id,s.name,s.role,s.location_code||'',to,reason||'Direct transfer by Admin','Direct',new Date().toISOString(),new Date().toISOString(),req.user.staff_id],res,()=>{
             audit(req.user,'POINT_TRANSFER_DIRECT',s.staff_id,`${s.location_code||''} -> ${to}${reason?` | ${reason}`:''}`);
+            notifyStaff(s.staff_id,`Point changed from ${s.location_code||'—'} to ${to}${reason?` • ${reason}`:''}`,'Point Change');
             res.json({message:`Point changed successfully for ${s.staff_id}`,staff_id:s.staff_id,new_location:to});
           });
       });
@@ -1664,6 +1720,10 @@ app.put('/api/point-transfers/:id/reject',auth,roles('admin','master_admin'),(re
 // RELIEVER NOTIFICATIONS - Staff receive a notification whenever Admin/Director assigns reliever duty.
 app.get('/api/reliever-notifications',auth,(req,res)=>all('SELECT * FROM reliever_notifications WHERE staff_id=? ORDER BY id DESC LIMIT 50',[req.user.staff_id],res));
 app.put('/api/reliever-notifications/:id/read',auth,(req,res)=>run('UPDATE reliever_notifications SET read_at=? WHERE id=? AND staff_id=?',[new Date().toISOString(),req.params.id,req.user.staff_id],res,()=>res.json({message:'Notification marked as read'})));
+
+// STAFF MESSAGE BOX - direct messages such as Reliever and Point Change alerts.
+app.get('/api/messages',auth,(req,res)=>all('SELECT * FROM staff_messages WHERE staff_id=? ORDER BY id DESC LIMIT 100',[req.user.staff_id],res));
+app.put('/api/messages/:id/read',auth,(req,res)=>run('UPDATE staff_messages SET read_at=? WHERE id=? AND staff_id=?',[new Date().toISOString(),req.params.id,req.user.staff_id],res,()=>res.json({message:'Message marked as read'})));
 
 // Notice / Help.
 app.get('/api/notices',auth,(req,res)=>{ const sql=['admin','master_admin'].includes(req.user.role) ? 'SELECT * FROM notices ORDER BY id DESC LIMIT 200' : "SELECT * FROM notices WHERE to_role=? OR to_role='all' OR from_role=? ORDER BY id DESC LIMIT 200"; all(sql,['admin','master_admin'].includes(req.user.role)?[]:[req.user.role,req.user.role],res); });
@@ -1827,7 +1887,7 @@ db.run(`CREATE TABLE IF NOT EXISTS location_assignments (
 )`);
 db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active)
   SELECT staff_id,location_code,'system-migration',1 FROM staff
-  WHERE role IN ('admin','field_officer') AND TRIM(COALESCE(location_code,''))<>''`);
+  WHERE role IN ('admin','field_officer','officer') AND TRIM(COALESCE(location_code,''))<>''`);
 
 // =====================================================
 // SECTION: LOCATION SCOPE HELPERS
@@ -1844,7 +1904,7 @@ function canUseLocation(req, code, cb){
   const location=String(code||'').trim();
   if(!location)return cb(null,false);
   if(req.user.role==='master_admin')return get('SELECT code FROM locations WHERE code=? AND active=1',[location],(e,r)=>cb(e,!!r));
-  if(['admin','field_officer'].includes(req.user.role))return get(`SELECT la.id FROM location_assignments la JOIN locations l ON l.code=la.location_code
+  if(['admin','field_officer','officer'].includes(req.user.role))return get(`SELECT la.id FROM location_assignments la JOIN locations l ON l.code=la.location_code
     WHERE la.staff_id=? AND la.location_code=? AND la.active=1 AND l.active=1 LIMIT 1`,[req.user.staff_id,location],(e,r)=>cb(e,!!r));
   cb(null,String(req.user.location_code||'')===location);
 }
@@ -1857,7 +1917,8 @@ app.get('/api/locations', auth, (req, res) => {
   repairLegacyLocationCodes(err=>{
     if(err) return res.status(500).json({error:'Unable to repair Location Codes: '+err.message});
     if(req.user.role==='master_admin') return all('SELECT * FROM locations WHERE active=1 ORDER BY code ASC',[],res);
-  if(['admin','field_officer'].includes(req.user.role)) return assignedLocations(req.user.staff_id,(err,rows)=>{
+  if(req.user.role==='admin') return all('SELECT * FROM locations WHERE active=1 ORDER BY code ASC',[],res);
+  if(['field_officer','officer'].includes(req.user.role)) return assignedLocations(req.user.staff_id,(err,rows)=>{
     if(err)return res.status(500).json({error:err.message});
     res.json(rows||[]);
   });
@@ -1881,8 +1942,8 @@ app.post('/api/location-assignments', auth, roles('admin','master_admin'), (req,
   if(!target||!locations.length)return res.status(400).json({error:'Staff ID and at least one Location Code are required'});
   get("SELECT id,role FROM staff WHERE staff_id=? AND status='active'",[target],(e,member)=>{
     if(e)return res.status(500).json({error:e.message});
-    if(!member || !['admin','field_officer'].includes(member.role))return res.status(400).json({error:'Locations can only be assigned to Admin or Field Officer'});
-    if(req.user.role==='admin' && member.role!=='field_officer')return res.status(403).json({error:'Admin can assign locations only to Field Officers'});
+    if(!member || !['admin','field_officer','officer'].includes(member.role))return res.status(400).json({error:'Locations can only be assigned to Admin, Field Officer or Officer'});
+    if(req.user.role==='admin' && !['field_officer','officer'].includes(member.role))return res.status(403).json({error:'Admin can assign locations only to Field Officers or Officers'});
     const verify=()=>{
       db.serialize(()=>{
         db.run('UPDATE location_assignments SET active=0 WHERE staff_id=?',[target]);
@@ -1901,15 +1962,9 @@ app.post('/api/location-assignments', auth, roles('admin','master_admin'), (req,
       const valid=new Set((rows||[]).map(r=>r.code));
       const bad=locations.filter(x=>!valid.has(x));
       if(bad.length)return res.status(400).json({error:'Invalid or inactive Location Code: '+bad.join(', ')});
-      // Admin may only distribute locations that are already assigned to that Admin. Master can distribute any.
-      if(req.user.role==='master_admin')return verify();
-      db.all(`SELECT location_code FROM location_assignments WHERE staff_id=? AND active=1 AND location_code IN (${placeholders})`,[req.user.staff_id,...locations],(ae,owned)=>{
-        if(ae)return res.status(500).json({error:ae.message});
-        const ownedSet=new Set((owned||[]).map(r=>r.location_code));
-        const notOwned=locations.filter(x=>!ownedSet.has(x));
-        if(notOwned.length)return res.status(403).json({error:'Admin can assign only its own assigned locations: '+notOwned.join(', ')});
-        verify();
-      });
+      // Master Admin and Admin can distribute any active location.
+      if(req.user.role==='master_admin' || req.user.role==='admin')return verify();
+      return res.status(403).json({error:'Only Admin or Master Admin can distribute locations'});
     });
   });
 });
@@ -1959,7 +2014,7 @@ app.get('/api/shift-schedules',auth,roles('admin','master_admin'),(req,res)=>{
   const params=[]; const where=[];
   if(date){where.push('ss.schedule_date<=?');params.push(date)}
   if(target){where.push('ss.staff_id=?');params.push(target)}
-  if(req.user.role==='admin'){where.push(`ss.location_code IN (SELECT location_code FROM location_assignments WHERE staff_id=? AND active=1)`);params.push(req.user.staff_id)}
+  // Admin has full operational access to all active locations and schedules; no point filter is applied.
   if(where.length)sql+=' WHERE '+where.join(' AND ');
   sql+=' ORDER BY ss.schedule_date DESC,ss.location_code,ss.staff_id';
   all(sql,params,res);

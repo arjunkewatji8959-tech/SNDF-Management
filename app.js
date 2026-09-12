@@ -117,6 +117,20 @@ async function loadPremiumDashboard(stats){
 
 // =====================================================
 
+// =====================================================
+// SECTION: FUNCTION loadMessages
+// =====================================================
+async function loadMessages(){
+  const box=$('#messageRows'); if(!box)return;
+  try{
+    const rows=await api('/messages');
+    box.innerHTML=(rows||[]).map(x=>`<div class="notice-item message-item ${x.read_at?'read':'unread'}"><b>🔔 ${escape(x.message_type||'Message')}</b><p>${escape(x.message||'')}</p><small>${new Date(x.created_at).toLocaleString()} ${x.read_at?'• Read':'• New'}</small>${x.read_at?'':' <button class="action" onclick="markMessageRead('+Number(x.id)+')">Mark as read</button>'}</div>`).join('')||'<p>No messages.</p>';
+  }catch(e){box.innerHTML='<p class="muted-note">Unable to load messages.</p>';}
+}
+async function markMessageRead(id){try{await api('/messages/'+id+'/read',{method:'PUT'});loadMessages();}catch(e){alert(e.message)}}
+window.markMessageRead=markMessageRead;
+// END SECTION: FUNCTION loadMessages
+
 // SECTION: FUNCTION refresh
 
 // =====================================================
@@ -150,7 +164,7 @@ if(role==='field_officer'){
     .join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';
 }
 // END SECTION: FIELD OFFICER SUPERVISOR LIST
-window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);fillAdminPresentTargets(s);setupAdminMarkPresent();renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();if(role==='officer')loadOfficerRelieverNotifications();}catch(e){console.log(e.message)}}
+window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);fillAdminPresentTargets(s);setupAdminMarkPresent();renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();if(role==='officer')loadMessages();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();}catch(e){console.log(e.message)}}
 
 // END SECTION: FUNCTION refresh
 
@@ -347,7 +361,7 @@ function fillCreateParent(list){
   // Location Code is always manually entered. Active locations are only suggestions.
   if(locInput){
     locInput.disabled=false;
-    locInput.required=roleVal!=='field_officer';
+    locInput.required=!['field_officer','officer'].includes(roleVal);
     locInput.setAttribute('list','createLocationOptions');
     if(locList)locList.innerHTML=activeLocations.map(x=>`<option value="${escape(x.code)}">${escape(x.code)} — ${escape(x.name||'')}</option>`).join('');
   }
@@ -610,7 +624,7 @@ function currentShift(){
 async function fillAutoAttendance(){
   let attendanceLocation=user?.location_code||'—';
   let dutyHours=currentDutyHours();
-  if(['master_admin','admin','field_officer'].includes(user?.role)){
+  if(['master_admin','admin','field_officer','officer'].includes(user?.role)){
     try{
       const office=await api('/main-office');
       attendanceLocation=office?.code||'—';
@@ -780,7 +794,7 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       // Normal Admin must create every operational role with Parent ID + Location.
       if(user?.role==='admin' && d.role!=='admin'){
         if(!String(d.parent_id||'').trim()) throw Error(`Parent ID is required for ${d.role}`);
-        if(d.role!=='field_officer' && !selectedLocations.length) throw Error(`Location Code is required for ${d.role}`);
+        if(!['field_officer','officer'].includes(d.role) && !selectedLocations.length) throw Error(`Location Code is required for ${d.role}`);
         if(['supervisor','guard','officer'].includes(d.role) && selectedLocations.length!==1)
           throw Error(`${d.role} can use only one Location Code`);
       }
@@ -794,7 +808,7 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       if(!/^\+?[0-9\s()-]{10,20}$/.test(d.contact_number)) throw Error('Enter a valid phone number');
       if(!d.parent_id && d.role!=='admin') throw Error('Select Parent ID');
       if(d.role==='admin' && user?.role==='master_admin') d.parent_id='adi123';
-      if(!selectedLocations.length && d.role!=='field_officer') throw Error('Select at least one Location Code');
+      if(!selectedLocations.length && !['field_officer','officer'].includes(d.role)) throw Error('Select at least one Location Code');
       const created = await api('/staff',{method:'POST',body:JSON.stringify(d)});
       window.__lastCreatedStaff = {
         staff_id: created.staff_id||d.staff_id,
@@ -1348,7 +1362,7 @@ loadProfile();refresh();
 if($('#p_staff_id')) $('#p_staff_id').value=user.staff_id;
 if(!isAdminRole && !['field_officer','supervisor'].includes(role)){ $('#staff')?.remove(); $('#advance')?.remove(); $('#suspend')?.remove(); $('#profile-records')?.remove(); }
 if(role==='field_officer'){$('#team-management form[data-type="staff"]')?.remove();$('#team-management h3')?.remove();$('#team-management .muted-note')?.remove();}
-if(role==='officer'){['daily','team-attendance','team-management','fine','help','point-transfer','tasks'].forEach(id=>$('#'+id)?.remove());document.querySelectorAll('[data-view="daily"],[data-view="team-attendance"],[data-view="team-management"],[data-view="fine"],[data-view="help"],[data-view="point-transfer"],[data-view="tasks"]').forEach(x=>x.remove());loadOfficerRelieverNotifications();}
+if(role==='officer'){['team-attendance','team-management','tasks'].forEach(id=>$('#'+id)?.remove());document.querySelectorAll('[data-view="team-attendance"],[data-view="team-management"],[data-view="tasks"]').forEach(x=>x.remove());loadMessages();}
 if(!isAdminRole) $$('[onclick^="downloadAttendance"]').forEach(b=>b.remove());
 if(!['admin','field_officer','officer'].includes(role)) $('#fine')?.querySelector('.fine-form')?.remove();
 if(isAdminRole) $('#fine')?.querySelector('.fine-form')?.insertAdjacentHTML('afterend','<p>Admin may fine Guard or Supervisor.</p>');

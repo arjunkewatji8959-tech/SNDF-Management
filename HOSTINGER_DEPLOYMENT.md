@@ -31,7 +31,7 @@ The app creates `sndf.db` automatically in `data/` by default. If your Hostinger
 Use the login page:
 `/login.html`
 
-If the application is already initialized with demo/admin data, use the credentials configured in that database. Do not put production passwords in GitHub.
+Use the Master Admin credentials configured by the application. Do not put production passwords in GitHub.
 
 ### Troubleshooting
 - If the homepage opens but login/API fails, verify the Node.js app is running and that `/api/deployment` returns JSON.

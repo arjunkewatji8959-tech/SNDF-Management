@@ -405,7 +405,7 @@
           <div class="grid">
             <div class="field">
               <label>Member</label>
-              <select id="assignmentStaff"><option value="">Select Admin / Field Officer</option></select>
+              <select id="assignmentStaff"><option value="">Select Admin / Field Officer / Officer</option></select>
             </div>
             <div class="field">
               <label>Locations (Ctrl/Command se multiple select)</label>
@@ -667,17 +667,17 @@
             apiJson('/api/location-ownership', { headers })
           ]);
 
-          // Director can distribute locations to Admin/Field Officer.
-          // Admin can distribute only to Field Officers.
+          // Director/Admin can distribute locations to Admin/Field Officer/Officer.
+          // Admin has full operational location access; Master Admin has full access.
           const allowedStaff = (staff || []).filter(member => {
             if (member.status !== 'active') return false;
             if (!['admin', 'field_officer'].includes(member.role)) return false;
             if (currentUser.role === 'master_admin') return true;
-            return member.role === 'field_officer';
+            return ['field_officer','officer'].includes(member.role);
           });
 
           staffSel.innerHTML =
-            '<option value="">Select Admin / Field Officer</option>' +
+            '<option value="">Select Admin / Field Officer / Officer</option>' +
             allowedStaff.map(member =>
               `<option value="${esc(member.staff_id)}">${esc(member.name)} — ${esc(member.staff_id)} (${esc(member.role)})</option>`
             ).join('');

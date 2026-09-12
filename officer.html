@@ -58,6 +58,9 @@
         <button data-view="help">
           ? Help
         </button>
+        <button data-view="messages">
+          💬 Message Box
+        </button>
         <button data-view="point-transfer">
           📍 Point Transfer
         </button>
@@ -99,7 +102,7 @@
                 </span>
               </p>
               <p>
-                Manage your permitted attendance, account, fines, notices, help and profile.
+                Main Office attendance, daily attendance, fines, notices, help, point transfer and direct system messages.
               </p>
             </div>
             <div class="hero-profile">
@@ -811,7 +814,7 @@
             </form>
             <!-- END SECTION: FORM -->
             <p>
-              Admin and Field Officer can issue fines to Guard or Supervisor. Supervisor and Guard cannot issue fines.
+              Officer can view and issue fines to Guard or Supervisor. Supervisor and Guard cannot issue fines.
             </p>
           </div>
           <div class="panel table-wrap">
@@ -1036,6 +1039,14 @@
           </div>
         </section>
         <!-- END SECTION: SECTION -->
+        <section id="messages" class="view hidden">
+          <h2>Message Box</h2>
+          <div class="panel">
+            <p class="muted-note">यहाँ Reliever Duty, Point Change और अन्य direct system messages आएंगे.</p>
+            <div id="messageRows"></div>
+          </div>
+        </section>
+        <!-- END SECTION: MESSAGE BOX -->
         <section id="help" class="view hidden">
           <h2>
             Help Section
