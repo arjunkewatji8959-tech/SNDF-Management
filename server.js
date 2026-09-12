@@ -87,7 +87,16 @@ app.get('/api/deployment', (req,res)=>res.json({
 
 // =====================================================
 
-function all(sql, params, res){ db.all(sql, params || [], (err, rows)=> err ? res.status(500).json({error:err.message}) : res.json(rows)); }
+function all(sql, params, resOrCallback){
+  db.all(sql, params || [], (err, rows)=>{
+    if(typeof resOrCallback === 'function') return resOrCallback(err, rows || []);
+    if(!resOrCallback || typeof resOrCallback.status !== 'function' || typeof resOrCallback.json !== 'function'){
+      console.error('SNDF all(): invalid response/callback argument');
+      return;
+    }
+    return err ? resOrCallback.status(500).json({error:err.message}) : resOrCallback.json(rows || []);
+  });
+}
 
 // END SECTION: FUNCTION all
 
@@ -102,6 +111,13 @@ function run(sql, params, res, success){ db.run(sql, params || [], function(err)
 // =====================================================
 function get(sql, params, cb){ db.get(sql, params || [], cb); }
 // END SECTION: FUNCTION get
+
+// SAFE DATABASE MIGRATION: ensure legacy databases have Main Office support.
+// This never deletes or resets existing data.
+db.run("ALTER TABLE locations ADD COLUMN is_main_office INTEGER NOT NULL DEFAULT 0", (err)=>{
+  if(err && !String(err.message||'').toLowerCase().includes('duplicate column')) console.warn('is_main_office migration:', err.message);
+});
+
 
 
 const columns = {
