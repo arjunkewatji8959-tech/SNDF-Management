@@ -311,16 +311,6 @@
                 </label>
                 <input id="radius" type="number" min="1" value="200" required>
               </div>
-              <div class="field">
-                <label>
-                  Main Office
-                </label>
-                <select id="isMainOffice">
-                  <option value="0">No — Field location / duty point</option>
-                  <option value="1">Yes — Field Officers check in/out here</option>
-                </select>
-                <small class="muted">Only one active location can be the Main Office. Field Officers use this point for their own attendance.</small>
-              </div>
             </div>
             <div class="actions">
               <button type="submit">
@@ -372,9 +362,6 @@
                     Duty Hours
                   </th>
                   <th>
-                    Main Office
-                  </th>
-                  <th>
                     Status
                   </th>
                   <th>
@@ -384,7 +371,7 @@
               </thead>
               <tbody id="locationRows">
                 <tr>
-                  <td colspan="10">
+                  <td colspan="9">
                     Loading...
                   </td>
                 </tr>
@@ -396,16 +383,16 @@
 
         <!-- =====================================================
              LOCATION ASSIGNMENT / OWNERSHIP
-             Director: assign locations to Admin/Field Officer.
+             Master Admin: assign locations to Admin/Field Officer.
              Admin: assign its own points to Field Officers.
         ===================================================== -->
         <section class="card" id="assignmentCard">
           <h2>👥 Location Distribution</h2>
-          <p class="muted">Ek Field Officer ko multiple locations de sakte hain. Example: 10 points → FO-01 ko 5, FO-02 ko 5. Admin ko bhi Director multiple locations assign kar sakta hai.</p>
+          <p class="muted">Ek Field Officer ko multiple locations de sakte hain. Example: 10 points → FO-01 ko 5, FO-02 ko 5. Admin ko bhi Master Admin multiple locations assign kar sakta hai.</p>
           <div class="grid">
             <div class="field">
               <label>Member</label>
-              <select id="assignmentStaff"><option value="">Select Admin / Field Officer / Officer</option></select>
+              <select id="assignmentStaff"><option value="">Select Admin / Field Officer</option></select>
             </div>
             <div class="field">
               <label>Locations (Ctrl/Command se multiple select)</label>
@@ -449,7 +436,6 @@
       const latitudeInput = $('latitude');
       const longitudeInput = $('longitude');
       const radiusInput = $('radius');
-      const isMainOfficeInput = $('isMainOffice');
       const dutyShiftInput = $('dutyShift');
       const dutyHoursInput = $('dutyHours');
       const formTitle = $('formTitle');
@@ -509,7 +495,7 @@
           if (!Array.isArray(rows) || !rows.length) {
             body.innerHTML = `
               <tr>
-                <td colspan="10">अभी कोई Location नहीं है।</td>
+                <td colspan="9">अभी कोई Location नहीं है।</td>
               </tr>
             `;
             return;
@@ -524,7 +510,6 @@
               <td>${Number(x.radius_meters)} m</td>
               <td>${x.duty_shift === '8_hour' ? '8 Hours Duty' : '12 Hours Duty'}</td>
               <td><b>${Number(x.duty_hours) === 8 ? 8 : 12} Hours</b></td>
-              <td>${Number(x.is_main_office) === 1 ? 'Yes' : 'No'}</td>
               <td>${x.active ? 'Active' : 'Inactive'}</td>
               <td>
                 <button type="button" onclick='editLocation(${JSON.stringify(x)})'>Edit</button>
@@ -535,7 +520,7 @@
         } catch (err) {
           body.innerHTML = `
             <tr>
-              <td colspan="10">${esc(err.message)}</td>
+              <td colspan="9">${esc(err.message)}</td>
             </tr>
           `;
         }
@@ -581,8 +566,7 @@
           longitude,
           radius_meters,
           duty_shift,
-          active: 1,
-          is_main_office: Number(isMainOfficeInput?.value || 0) === 1 ? 1 : 0
+          active: 1
         };
 
         const url = id
@@ -667,17 +651,17 @@
             apiJson('/api/location-ownership', { headers })
           ]);
 
-          // Director/Admin can distribute locations to Admin/Field Officer/Officer.
-          // Admin has full operational location access; Master Admin has full access.
+          // Master Admin can distribute locations to Admin/Field Officer.
+          // Admin can distribute only to Field Officers.
           const allowedStaff = (staff || []).filter(member => {
             if (member.status !== 'active') return false;
             if (!['admin', 'field_officer'].includes(member.role)) return false;
             if (currentUser.role === 'master_admin') return true;
-            return ['field_officer','officer'].includes(member.role);
+            return member.role === 'field_officer';
           });
 
           staffSel.innerHTML =
-            '<option value="">Select Admin / Field Officer / Officer</option>' +
+            '<option value="">Select Admin / Field Officer</option>' +
             allowedStaff.map(member =>
               `<option value="${esc(member.staff_id)}">${esc(member.name)} — ${esc(member.staff_id)} (${esc(member.role)})</option>`
             ).join('');

@@ -350,9 +350,6 @@
                   <option value="all">
                     All Staff
                   </option>
-                  <option value="admin" class="master-only-option">
-                    Admin
-                  </option>
                   <option value="field_officer">
                     Field Officer
                   </option>
@@ -514,7 +511,7 @@
               </div>
             </div>
             <p class="muted-note">
-              Admin/Director yahan Guard/Supervisor ko Reliever assign karega aur location/shift set karega. Assignment ke turant baad registered mobile number par WhatsApp notification bhejne ki koshish hogi. Automatic sending ke liye WhatsApp Cloud API configure karein; warna WhatsApp message link open kiya ja sakta hai.
+              Admin/Master Admin yahan Guard/Supervisor ko Reliever assign karega aur location/shift set karega. Assignment ke turant baad registered mobile number par WhatsApp notification bhejne ki koshish hogi. Automatic sending ke liye WhatsApp Cloud API configure karein; warna WhatsApp message link open kiya ja sakta hai.
             </p>
             <form id="relieverForm" class="grid-form">
               <label>
@@ -600,19 +597,6 @@
             </table>
           </div>
           <div class="role-lists">
-            <div class="panel role-list-panel" data-role-list="admin" id="adminMemberPanel">
-              <h3>Admin List</h3>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th><th>ID</th><th>Post</th><th>Department</th><th>Salary</th><th>Status</th><th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody id="adminRows"></tbody>
-                </table>
-              </div>
-            </div>
             <div class="panel role-list-panel">
               <h3>
                 ✓ Selected Reliever List
@@ -758,7 +742,7 @@
           </h2>
           <div class="panel" id="adminMarkPresentPanel">
             <h3>Mark Present by Staff ID</h3>
-            <p class="muted-note">Admin / Director kisi bhi permitted staff ki ID dal kar attendance ko Present mark kar sakte hain. Is manual entry mein camera photo zaroori nahi hai; record mein “Admin Marked Present” status save hoga.</p>
+            <p class="muted-note">Admin / Master Admin kisi bhi permitted staff ki ID dal kar attendance ko Present mark kar sakte hain. Is manual entry mein camera photo zaroori nahi hai; record mein “Admin Marked Present” status save hoga.</p>
             <form id="adminMarkPresentForm" class="download-toolbar">
               <label>
                 Staff ID
@@ -1164,112 +1148,65 @@
             Create / Manage Members
           </h2>
           <div class="panel">
-            <!-- SECTION: CREATE MEMBER FORM -->
-            <form data-type="staff" class="grid-form member-create-form">
-              <div class="member-field member-field-role">
-                <label for="createRole">Role</label>
-                <select name="role" id="createRole" required>
-                  <option value="admin" class="master-only-option">Admin</option>
-                  <option value="field_officer">Field Officer</option>
-                  <option value="officer">Officer</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="guard">Guard</option>
-                </select>
-              </div>
-
-              <div class="member-field">
-                <label for="createName">Name</label>
-                <input id="createName" name="name" placeholder="Full Name" autocomplete="name" required>
-              </div>
-
-              <div class="member-field">
-                <label for="createStaffId">Staff ID</label>
-                <input id="createStaffId" name="staff_id" placeholder="e.g. FO001" autocomplete="username" required>
-              </div>
-
-              <div class="member-field">
-                <label for="createPassword">Password</label>
-                <input id="createPassword" name="password" type="password" minlength="6" placeholder="Minimum 6 characters" autocomplete="new-password" required>
-              </div>
-
-              <div class="member-field">
-                <label for="createPost">Post</label>
-                <input id="createPost" name="post" placeholder="Post / Designation" required>
-              </div>
-
-              <div class="member-field">
-                <label for="createSalary">Salary</label>
-                <input id="createSalary" name="salary" type="number" min="0" step="1" placeholder="Monthly Salary" required>
-              </div>
-
-              <div class="member-field">
-                <label for="createDob">Date of Birth</label>
-                <input id="createDob" name="dob" type="date" required>
-              </div>
-
-              <div class="member-field">
-                <label for="createDepartment">Department</label>
-                <input id="createDepartment" name="department" placeholder="Department" required>
-              </div>
-
+            <form data-type="staff" class="grid-form">
+              <select name="role" id="createRole">
+                <option value="field_officer">
+                  Field Officer
+                </option>
+                <option value="officer">
+                  Officer
+                </option>
+                <option value="supervisor">
+                  Supervisor
+                </option>
+                <option value="guard">
+                  Guard
+                </option>
+                <option value="admin" class="master-only-option">
+                  Admin (Master Admin Only)
+                </option>
+              </select>
+              <input name="name" placeholder="Full Name" required>
+              <input name="staff_id" placeholder="Staff ID" required>
+              <input name="password" type="password" placeholder="Password" required>
+              <input name="post" placeholder="Post">
+              <input name="salary" type="number" min="0" placeholder="Salary">
+              <input name="dob" type="date">
+              <input name="department" placeholder="Department">
               <!-- SECTION: MEMBER LOCATION -->
-              <div class="member-field member-field-location">
-                <label for="createLocation">Location Code</label>
-                <input name="location_code" id="createLocation" list="createLocationOptions" autocomplete="off" placeholder="Enter Location Code manually">
-                <datalist id="createLocationOptions"></datalist>
-                <small id="createLocationHint" class="muted-note">Type the Location Code manually. All active Location Codes will be shown as suggestions.</small>
-              </div>
+              <label class="field-label" for="createLocation">Location Code</label>
+              <select name="location_code" id="createLocation" data-role-location-select>
+                <option value="">
+                  Select Location (Create Location First)
+                </option>
+              </select>
+              <small id="createLocationHint" class="muted-note">Select the working Location Code.</small>
               <!-- END SECTION: MEMBER LOCATION -->
 
               <!-- SECTION: MEMBER PARENT -->
-              <div class="member-field member-field-parent">
-                <label for="createParent">Select Parent ID</label>
-                <input name="parent_id" id="createParent" list="createParentOptions" autocomplete="off" placeholder="Enter Parent Staff ID manually">
-                <datalist id="createParentOptions"></datalist>
-                <small id="createParentHint" class="muted-note">Type the Parent ID manually. Valid Parent IDs will be shown as suggestions.</small>
-              </div>
+              <select name="parent_id" id="createParent">
+                <option value="">Select Parent ID</option>
+              </select>
+              <small id="createParentHint" class="muted-note">Parent ID is required for members created by Admin.</small>
               <!-- END SECTION: MEMBER PARENT -->
 
-              <div class="member-field member-field-phone">
-                <label for="createContact">Phone Number</label>
-                <input id="createContact" name="contact_number" type="tel" inputmode="tel" placeholder="Phone Number" autocomplete="tel" minlength="10" maxlength="20" required>
-              </div>
-
-              <div class="member-create-notes">
-                <small id="createHierarchyHint" class="muted-note">
-                  Hierarchy: Admin → Field Officer / Officer → Supervisor → Guard. Field Officer can use multiple locations; Supervisor and Guard use one location.
-                </small>
-              </div>
-
-              <button type="submit" class="action primary-action member-create-button">Create Member</button>
+              <small id="createHierarchyHint" class="muted-note">
+                Admin → Field Officer / Officer → Supervisor → Guard. Field Officer can be assigned to multiple locations. Supervisor and Guard use one location.
+              </small>
+              <input name="contact_number" placeholder="Contact Number">
+              <button class="action primary-action">
+                Create Member
+              </button>
             </form>
-            <!-- END SECTION: CREATE MEMBER FORM -->
+            <!-- END SECTION: FORM -->
           </div>
-          <!-- SECTION: RECENTLY CREATED MEMBER -->
-          <div class="panel recent-created-panel hidden" id="recentCreatedMemberPanel" aria-live="polite">
-            <div class="recent-created-head">
-              <div>
-                <h3>Recently Created Member</h3>
-                <p class="muted-note">Create successful hone ke baad latest saved member ki complete details yahan dikhengi.</p>
-              </div>
-              <span class="recent-created-badge">Saved ✓</span>
-            </div>
-            <div class="recent-created-grid" id="recentCreatedMemberGrid"></div>
-          </div>
-          <!-- END SECTION: RECENTLY CREATED MEMBER -->
           <div class="panel">
             <div class="filter-row">
               <label class="filter-label">
                 Member List
                 <select id="memberRoleFilter">
-                  <option value="all">
-                    All Members
-                  </option>
                   <option value="field_officer">
                     Field Officer
-                  </option>
-                  <option value="officer">
-                    Officer
                   </option>
                   <option value="supervisor">
                     Supervisor
@@ -1283,6 +1220,36 @@
             <p class="muted-note">
               Role select karne par sirf usi role ke added members ki list dikhegi.
             </p>
+          </div>
+          <div class="panel role-list-panel master-admin-list" id="adminMemberPanel">
+            <h3>
+              Admin List — Master Admin Only
+            </h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>
+                      Name
+                    </th>
+                    <th>
+                      ID
+                    </th>
+                    <th>
+                      Post
+                    </th>
+                    <th>
+                      Status
+                    </th>
+                    <th>
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="adminRows">
+                </tbody>
+              </table>
+            </div>
           </div>
           <div class="role-lists">
             <div class="panel role-list-panel" data-role-list="officer">
@@ -1484,11 +1451,11 @@
                 <option value="admin">
                   Admin
                 </option>
-                <option value="officer">
-                  Officer
-                </option>
                 <option value="field_officer">
                   Field Officer
+                </option>
+                <option value="officer">
+                  Officer
                 </option>
                 <option value="supervisor">
                   Supervisor
@@ -1518,7 +1485,7 @@
           </h2>
           <div class="panel">
             <p class="muted-note">
-              Pending point transfer requests yahan show hongi. Admin/Director request approve/reject kar sakte hain, ya bina request ke Staff ID dal kar direct point change kar sakte hain.
+              Pending point transfer requests yahan show hongi. Admin/Master Admin request approve/reject kar sakte hain, ya bina request ke Staff ID dal kar direct point change kar sakte hain.
             </p>
             <form id="directPointTransferForm" class="grid-form" style="margin-bottom:18px">
               <label>
@@ -1696,7 +1663,7 @@
                     All
                   </option>
                   <option value="master_admin">
-                    Director
+                    Master Admin
                   </option>
                   <option value="admin">
                     Admin
@@ -1782,7 +1749,7 @@
               Create / Assign Task
             </h3>
             <p class="muted-note">
-              Task hierarchy: Director → Admin/Field Officer/Supervisor/Guard; Admin → Field Officer/Supervisor/Guard; Field Officer → Supervisor/Guard; Supervisor → Guard.
+              Task hierarchy: Master Admin → Admin/Field Officer/Supervisor/Guard; Admin → Field Officer/Supervisor/Guard; Field Officer → Supervisor/Guard; Supervisor → Guard.
             </p>
             <form id="taskCreateForm" class="grid-form task-create-form">
               <label>

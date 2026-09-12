@@ -10,7 +10,7 @@
 <body>
 <header class="appbar"><a class="brand" href="admin.html"><img src="assets-logo.png" alt="SNDF">SNDF <small>SECURITY SERVICES</small></a><button class="mobile-toggle" onclick="document.querySelector('.side').classList.toggle('open')">☰</button></header>
 <div class="schedule-wrap">
-<section class="panel"><h1>🕐 Shift Schedule</h1><p class="muted">Admin/Director Staff ID, Location ID/Code aur location ke 8/12 hour duty ke hisab se shift set kar sakte hain.</p>
+<section class="panel"><h1>🕐 Shift Schedule</h1><p class="muted">Admin/Master Admin Staff ID, Location ID/Code aur location ke 8/12 hour duty ke hisab se shift set kar sakte hain.</p>
 <form id="scheduleForm" class="grid-form">
 <label>Staff ID<select id="staffId" required><option value="">Select Staff</option></select></label>
 <label>Location ID / Code<select id="locationCode" required><option value="">Select Location</option></select></label>
@@ -23,7 +23,7 @@
 </div>
 <script>
 // =====================================================
-// SHIFT SCHEDULE - ADMIN / DIRECTOR
+// SHIFT SCHEDULE - ADMIN / MASTER ADMIN
 // =====================================================
 const user=JSON.parse(sessionStorage.getItem('sndfUser')||'null');
 if(!user||!['admin','master_admin'].includes(user.role))location.replace('login.html?role=admin');

@@ -24,50 +24,15 @@ const dbPath = path.join(dataDir, 'sndf.db');
 console.log(`SNDF SQLite database: ${dbPath}`);
 const db = new sqlite3.Database(dbPath);
 let dbReady = false;
-db.run('PRAGMA journal_mode=WAL', err => { if (err) console.warn('SQLite WAL mode unavailable:', err.message); });
-db.run('PRAGMA synchronous=NORMAL', err => { if (err) console.warn('SQLite synchronous mode warning:', err.message); });
 
 db.configure('busyTimeout', 5000);
-
-// Repair legacy locations that were created with a blank Location Code.
-// This runs to completion BEFORE dbReady becomes true, so Railway cannot serve
-// the Admin panel with blank location-code options. Existing valid codes are untouched.
-function repairLegacyLocationCodes(done){
-  db.all(`SELECT id FROM locations WHERE TRIM(COALESCE(code,''))='' ORDER BY id`, [], (err, rows)=>{
-    if(err){ console.error('Legacy location-code check failed:', err.message); return done(err); }
-    if(!rows || !rows.length) return done(null);
-    let pending=rows.length, firstErr=null;
-    rows.forEach(row=>{
-      const generated='LOC'+String(row.id).padStart(3,'0');
-      db.run('UPDATE locations SET code=? WHERE id=?',[generated,row.id],e1=>{
-        if(e1) firstErr=firstErr||e1;
-        // Preserve legacy records that referenced the blank code when there is
-        // exactly one repaired legacy location. This avoids losing the old scope.
-        db.run(`UPDATE location_assignments SET location_code=? WHERE TRIM(COALESCE(location_code,''))=''`,[generated],e2=>{
-          if(e2) firstErr=firstErr||e2;
-          db.run(`UPDATE shift_schedules SET location_code=? WHERE TRIM(COALESCE(location_code,''))=''`,[generated],e3=>{
-            if(e3) firstErr=firstErr||e3;
-            db.run(`UPDATE staff SET location_code=? WHERE TRIM(COALESCE(location_code,''))='' AND role IN ('admin','field_officer','officer','supervisor','guard')`,[generated],e4=>{
-              if(e4) firstErr=firstErr||e4;
-              if(--pending===0){
-                if(firstErr) console.error('Legacy location-code repair completed with error:',firstErr.message);
-                else console.log(`Repaired ${rows.length} legacy blank Location Code(s).`);
-                done(firstErr);
-              }
-            });
-          });
-        });
-      });
-    });
-  });
-}
 
 app.use(cors());
 app.use(express.json({limit:'12mb'}));
 app.use(express.urlencoded({extended:true}));
 app.use(express.static(frontendPath));
 
-// Hold API requests until SQLite schema + Director bootstrap are complete.
+// Hold API requests until SQLite schema + Master Admin bootstrap are complete.
 // This prevents early Railway/Hostinger requests from seeing temporary "no such table/column" errors.
 app.use('/api', (req,res,next)=>{
   if (req.path === '/deployment' || req.path === '/health' || dbReady) return next();
@@ -87,16 +52,7 @@ app.get('/api/deployment', (req,res)=>res.json({
 
 // =====================================================
 
-function all(sql, params, resOrCallback){
-  db.all(sql, params || [], (err, rows)=>{
-    if(typeof resOrCallback === 'function') return resOrCallback(err, rows || []);
-    if(!resOrCallback || typeof resOrCallback.status !== 'function' || typeof resOrCallback.json !== 'function'){
-      console.error('SNDF all(): invalid response/callback argument');
-      return;
-    }
-    return err ? resOrCallback.status(500).json({error:err.message}) : resOrCallback.json(rows || []);
-  });
-}
+function all(sql, params, res){ db.all(sql, params || [], (err, rows)=> err ? res.status(500).json({error:err.message}) : res.json(rows)); }
 
 // END SECTION: FUNCTION all
 
@@ -111,13 +67,6 @@ function run(sql, params, res, success){ db.run(sql, params || [], function(err)
 // =====================================================
 function get(sql, params, cb){ db.get(sql, params || [], cb); }
 // END SECTION: FUNCTION get
-
-// SAFE DATABASE MIGRATION: ensure legacy databases have Main Office support.
-// This never deletes or resets existing data.
-db.run("ALTER TABLE locations ADD COLUMN is_main_office INTEGER NOT NULL DEFAULT 0", (err)=>{
-  if(err && !String(err.message||'').toLowerCase().includes('duplicate column')) console.warn('is_main_office migration:', err.message);
-});
-
 
 
 const columns = {
@@ -175,11 +124,6 @@ db.serialize(()=>{
   db.run(`CREATE TABLE IF NOT EXISTS reliever_notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT NOT NULL, message TEXT NOT NULL,
     created_at TEXT NOT NULL, read_at TEXT
-  )`);
-  // STAFF MESSAGE BOX - direct in-app notifications for Reliever/Point/other events.
-  db.run(`CREATE TABLE IF NOT EXISTS staff_messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT NOT NULL, message TEXT NOT NULL,
-    message_type TEXT DEFAULT 'General', created_at TEXT NOT NULL, read_at TEXT
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS help_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT, from_role TEXT, message TEXT, response TEXT,
@@ -244,70 +188,36 @@ db.serialize(()=>{
     active INTEGER NOT NULL DEFAULT 1,
     UNIQUE(staff_id,location_code)
   )`);
-  // LOCATION MASTER TABLE - created before dbReady so first Railway request cannot race schema creation.
-  db.run(`CREATE TABLE IF NOT EXISTS locations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    address TEXT DEFAULT '',
-    latitude REAL NOT NULL,
-    longitude REAL NOT NULL,
-    radius_meters INTEGER NOT NULL DEFAULT 200,
-    duty_shift TEXT NOT NULL DEFAULT '12_hour',
-    duty_hours INTEGER NOT NULL DEFAULT 12,
-    active INTEGER NOT NULL DEFAULT 1,
-    is_main_office INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-  )`);
-  db.run(`CREATE TABLE IF NOT EXISTS shift_schedules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    staff_id TEXT NOT NULL,
-    location_code TEXT NOT NULL,
-    schedule_date TEXT NOT NULL,
-    duty_hours INTEGER NOT NULL,
-    shift TEXT NOT NULL,
-    created_by TEXT NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(staff_id,location_code,schedule_date)
-  )`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_staff_role_status ON staff(role,status)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_staff_parent ON staff(parent_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_staff_location ON staff(location_code)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_attendance_staff_date ON attendance(staff_id,date)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_location_assignments_staff ON location_assignments(staff_id,active)`);
-
   db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active)
     SELECT staff_id,location_code,'system-migration',1 FROM staff
-    WHERE role IN ('admin','field_officer','officer') AND TRIM(COALESCE(location_code,''))<>''`);
+    WHERE role IN ('admin','field_officer') AND TRIM(COALESCE(location_code,''))<>''`);
 
 
-  // DIRECTOR bootstrap:
+  // MASTER ADMIN bootstrap:
   // Keep one fixed top-level account and never delete/overwrite other staff records.
   // Using a synchronous bcrypt hash here keeps the final database-ready signal ordered.
   const masterPasswordHash = bcrypt.hashSync('sndf1234', 12);
   db.run(
     `INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,department,status)
-     VALUES('master_admin','SNDF Director','adi123',?,'Director',0,'','','Management','active')
-     ON CONFLICT(staff_id) DO NOTHING`,
+     VALUES('master_admin','SNDF Master Admin','adi123',?,'Master Admin',0,'','','Management','active')
+     ON CONFLICT(staff_id) DO UPDATE SET
+       role='master_admin',
+       post='Master Admin',
+       name='SNDF Master Admin',
+       password=excluded.password,
+       status='active'`,
     [masterPasswordHash],
     (masterErr) => {
       if (masterErr) {
-        console.error('Director bootstrap failed:', masterErr.message);
+        console.error('Master Admin bootstrap failed:', masterErr.message);
         return;
       }
-      repairLegacyLocationCodes(repairErr=>{
-        if(repairErr){
-          console.error('Database startup repair failed:', repairErr.message);
-          return;
-        }
-        console.log('Director ready: adi123');
-        dbReady = true;
-      });
+      console.log('Master Admin ready: adi123');
+      dbReady = true;
     }
   );
 
-  // Production database intentionally starts with Director only when no other
+  // Production database intentionally starts with Master Admin only when no other
   // records exist. Existing production records are never cleared by this startup code.
 
 });
@@ -496,13 +406,6 @@ function auth(req,res,next){
 // SECTION: FUNCTION roles
 // =====================================================
 function roles(...allowed){ return (req,res,next)=>allowed.includes(req.user.role) ? next() : res.status(403).json({error:`Only ${allowed.join(' or ')} can perform this action`}); }
-// Direct staff message helper. Failures are logged but never break the main operation.
-function notifyStaff(staffId,message,type='General'){
-  if(!staffId||!message)return;
-  db.run('INSERT INTO staff_messages(staff_id,message,message_type,created_at,read_at) VALUES(?,?,?,?,NULL)',[String(staffId),String(message),String(type),new Date().toISOString()],err=>{
-    if(err) console.warn('staff message save failed:',err.message);
-  });
-}
 // END SECTION: FUNCTION roles
 
 
@@ -521,34 +424,11 @@ app.get('/api/staff',auth,(req,res)=>{
         let out=list.map(r=>({...r,assigned_locations:by[r.staff_id]||[]}));
         if(req.user.role==='master_admin')return res.json(out);
         if(req.user.role==='admin') {
-          // Admin has full operational access, but cannot manage/view another Admin account as a child.
-          out=out.filter(r=>r.role!=='admin' || r.staff_id===req.user.staff_id);
+          const mine=new Set(by[req.user.staff_id]||[]);
+          out=out.filter(r=>r.staff_id===req.user.staff_id || r.role==='master_admin' || (r.role==='field_officer'&&(by[r.staff_id]||[]).some(x=>mine.has(x))) || (['officer','supervisor','guard'].includes(r.role)&&mine.has(r.location_code)));
         } else if(req.user.role==='field_officer') {
           const mine=new Set(by[req.user.staff_id]||[]);
           out=out.filter(r=>r.staff_id===req.user.staff_id || ((r.role==='supervisor'||r.role==='guard') && mine.has(r.location_code) && (r.role==='supervisor'?r.parent_id===req.user.staff_id:true)));
-        } else if(req.user.role==='officer') {
-          // Officer works under its Admin, like a Field Officer.
-          // Its own attendance remains Main Office, while operational visibility is
-          // limited to the locations assigned to this Officer.
-          const adminId=String(req.user.parent_id||'');
-          const mine=new Set((by[req.user.staff_id]||[]).map(code=>String(code).toLowerCase()));
-          const byId=new Map(out.map(r=>[r.staff_id,r]));
-          const underAdmin=(r)=>{
-            if(r.staff_id===req.user.staff_id)return true;
-            let cur=r, seen=new Set();
-            while(cur && cur.parent_id && !seen.has(cur.staff_id)){
-              if(String(cur.parent_id)===adminId)return true;
-              seen.add(cur.staff_id); cur=byId.get(cur.parent_id);
-            }
-            return false;
-          };
-          out=out.filter(r=>{
-            if(r.staff_id===req.user.staff_id)return true;
-            if(!underAdmin(r) || r.role==='admin' || r.role==='master_admin')return false;
-            // Officer sees operational members only when their location is one of
-            // the Officer's assigned work locations.
-            return mine.has(String(r.location_code||'').toLowerCase());
-          });
         } else if(req.user.role==='supervisor') {
           out=out.filter(r=>r.staff_id===req.user.staff_id || (r.role==='guard' && (r.parent_id===req.user.staff_id || r.reliever_parent_id===req.user.staff_id)));
         } else if(req.user.role==='guard') out=out.filter(r=>r.staff_id===req.user.staff_id);
@@ -586,202 +466,142 @@ app.get('/api/profile-update-sheet',auth,roles('admin','master_admin'),(req,res)
 
 // =====================================================
 // SECTION: STAFF CREATION + HIERARCHY
-// Director -> Admin -> Field Officer -> Supervisor -> Guard
+// Master Admin -> Admin -> Field Officer -> Supervisor -> Guard
 // =====================================================
-
-app.post('/api/staff', auth, roles('admin','master_admin','field_officer','officer','supervisor'), async (req,res)=>{
-  // =====================================================
-  // PRODUCTION MEMBER CREATE — hardened backend
-  // Master Admin -> Admin / Field Officer / Officer / Supervisor / Guard
-  // Admin       -> Field Officer / Officer
-  // Field Officer -> Supervisor
-  // Supervisor    -> Guard
-  // =====================================================
+app.post('/api/staff',auth,roles('admin','master_admin'),(req,res)=>{
   const x=req.body||{};
-  const roleAliases={
-    'field officer':'field_officer','field-officer':'field_officer',
-    'master admin':'master_admin','master-admin':'master_admin',
-    'super visor':'supervisor'
-  };
-  const role=roleAliases[String(x.role||'').trim().toLowerCase()] || String(x.role||'').trim().toLowerCase();
-  const name=String(x.name||'').trim();
+  const role=String(x.role||'').trim().toLowerCase();
   const staffId=String(x.staff_id||'').trim();
   const password=String(x.password??'');
-  const post=String(x.post||'').trim();
-  const department=String(x.department||'').trim() || role.replace('_',' ').toUpperCase();
-  const contact=String(x.contact_number||'').trim();
-  const dob=String(x.dob||'').trim();
-  const salary=Number(x.salary||0);
-  const creator=req.user.role;
+  const singleLocation=String(x.location_code||'').trim();
+  const requestedLocations=Array.isArray(x.location_codes)
+    ? [...new Set(x.location_codes.map(v=>String(v||'').trim()).filter(Boolean))]
+    : (singleLocation ? [singleLocation] : []);
+  const parent=String(x.parent_id||'').trim();
+  const adminCreating=req.user.role==='admin';
 
-  const allowedByCreator={
-    master_admin:['admin','field_officer','officer','supervisor','guard'],
-    admin:['field_officer','officer'],
-    field_officer:['supervisor'],
-    officer:['supervisor'],
-    supervisor:['guard']
-  };
-  if(!(allowedByCreator[creator]||[]).includes(role))
-    return res.status(403).json({error:`${creator} cannot create ${role}. Allowed: ${(allowedByCreator[creator]||[]).join(', ')||'none'}`});
+  if(!['admin','field_officer','officer','supervisor','guard'].includes(role) ||
+     !String(x.name||'').trim() || !staffId || !password){
+    return res.status(400).json({error:'Role, name, Staff ID and password are required'});
+  }
+  if(password.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});
 
-  if(!name||!staffId||!password||!post)
-    return res.status(400).json({error:'Name, Staff ID, Password and Post are required'});
-  if(password.length<6)
-    return res.status(400).json({error:'Password must be at least 6 characters'});
-  if(!Number.isFinite(salary)||salary<0)
-    return res.status(400).json({error:'Salary must be a valid number (0 or more)'});
-  if(dob && !/^\d{4}-\d{2}-\d{2}$/.test(dob))
-    return res.status(400).json({error:'Date of Birth must be in YYYY-MM-DD format'});
-  if(contact && !/^\+?[0-9\s()-]{10,20}$/.test(contact))
-    return res.status(400).json({error:'Enter a valid phone number'});
-
-  // Parent is determined by the logged-in creator whenever possible.
-  let parent=String(x.parent_id||'').trim();
-  if(creator==='master_admin' && role==='admin') parent='adi123';
-  if(creator==='admin' && ['field_officer','officer'].includes(role)) parent=req.user.staff_id;
-  if(creator==='field_officer' && role==='supervisor') parent=req.user.staff_id;
-  if(creator==='supervisor' && role==='guard') parent=req.user.staff_id;
-
-  if(role!=='admin' && !parent)
-    return res.status(400).json({error:`Parent ID is required for ${role}`});
-  if(role==='admin' && creator!=='master_admin')
+  // Master Admin remains unchanged. Normal Admin cannot create another Admin.
+  if(role==='admin' && adminCreating)
     return res.status(403).json({error:'Only Master Admin can create Admin'});
 
-  // Normalize locations from either location_codes[] or location_code.
-  let locationCodes=Array.isArray(x.location_codes)
-    ? x.location_codes.map(v=>String(v||'').trim()).filter(Boolean)
-    : [];
-  const oneLocation=String(x.location_code||'').trim();
-  if(oneLocation && !locationCodes.includes(oneLocation)) locationCodes.push(oneLocation);
-  locationCodes=[...new Set(locationCodes)];
-
-  // FO/Officer receive work locations later through Location Distribution.
-  if(['supervisor','guard'].includes(role) && locationCodes.length!==1)
-    return res.status(400).json({error:`${role} requires exactly one Location Code`});
-  if(role==='admin') locationCodes=[];
-
-  // Parent must exist and have the correct role.
-  const getParent=()=>new Promise((resolve,reject)=>{
-    if(role==='admin') return get("SELECT id,role,status,staff_id FROM staff WHERE staff_id='adi123' LIMIT 1",(e,p)=>e?reject(e):resolve(p));
-    get('SELECT id,role,status,staff_id,location_code FROM staff WHERE staff_id=? LIMIT 1',[parent],(e,p)=>e?reject(e):resolve(p));
-  });
-
-  try{
-    const parentRow=await getParent();
-    if(!parentRow || parentRow.status!=='active')
-      return res.status(400).json({error:'Selected Parent ID is not an active member'});
-
-    const expected={
-      field_officer:'admin', officer:'admin',
-      supervisor:'field_officer', guard:'supervisor'
-    }[role];
-    if(role==='admin'){
-      if(parentRow.role!=='master_admin') return res.status(400).json({error:'Admin Parent must be the Master Admin'});
-    }else if(role==='supervisor'){
-      // A Supervisor may be created by either a Field Officer or an Officer.
-      // Both are operational managers under an Admin, so both are valid parents.
-      if(!['field_officer','officer'].includes(parentRow.role))
-        return res.status(400).json({error:'Supervisor Parent ID must belong to an active Field Officer or Officer'});
-    }else if(parentRow.role!==expected){
-      return res.status(400).json({error:`${role} Parent ID must belong to an active ${expected}`});
-    }
-
-    if(creator!=='master_admin' && parent!==req.user.staff_id)
-      return res.status(403).json({error:'Parent ID must be the logged-in creator'});
-    if(role==='supervisor'){
-      const loc=locationCodes[0];
-      const assigned=await new Promise((resolve,reject)=>get(
-        'SELECT 1 FROM location_assignments WHERE staff_id=? AND location_code=? AND active=1',
-        [parent,loc],(e,r)=>e?reject(e):resolve(r)
-      ));
-      if(!assigned) return res.status(400).json({error:'Selected Location is not assigned to the Field Officer Parent'});
-    }
-    if(role==='guard' && String(parentRow.location_code||'')!==locationCodes[0])
-      return res.status(400).json({error:'Guard Location must exactly match the Supervisor Parent Location'});
-
-    // Validate all supplied locations against active location master.
-    if(locationCodes.length){
-      const placeholders=locationCodes.map(()=>'?').join(',');
-      const rows=await new Promise((resolve,reject)=>db.all(
-        `SELECT code FROM locations WHERE active=1 AND code IN (${placeholders})`,locationCodes,
-        (e,r)=>e?reject(e):resolve(r||[])
-      ));
-      const valid=new Set(rows.map(r=>String(r.code)));
-      const invalid=locationCodes.filter(c=>!valid.has(c));
-      if(invalid.length) return res.status(400).json({error:'Invalid or inactive Location Code: '+invalid.join(', ')});
-    }
-
-    const duplicate=await new Promise((resolve,reject)=>get(
-      'SELECT id,staff_id FROM staff WHERE LOWER(TRIM(staff_id))=LOWER(TRIM(?)) LIMIT 1',
-      [staffId],(e,r)=>e?reject(e):resolve(r)
-    ));
-    if(duplicate) return res.status(409).json({error:`Staff ID ${staffId} already exists. Use a unique Staff ID.`});
-
-    const hashed=await bcrypt.hash(password,12);
-    const storedLocation=locationCodes[0]||'';
-    // Admin created by Master Admin is a top-level managed account.
-    // Do not make optional profile fields (DOB/department/contact) block account creation.
-    // The database stores empty values for those fields until the Admin completes the profile.
-    const insertSql=`INSERT INTO staff
-      (role,name,staff_id,password,post,salary,location_code,parent_id,dob,department,contact_number,dp,
-       age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,
-       driving_license,training_details,work_experience,photo_front,photo_back,photo_left,photo_right,is_reliever)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
-
-    const row=await new Promise((resolve,reject)=>{
-      db.run(insertSql,[
-        role,name,staffId,hashed,post,salary,storedLocation,parent,dob,department,contact,x.dp||'',
-        x.age||null,x.height||null,x.weight||null,x.blood_group||'',x.qualification||'',
-        x.physical_level||'',x.medical_level||'',x.skills||'',x.police_verification||'',
-        x.driving_license||'',x.training_details||'',x.work_experience||'',
-        x.photo_front||'',x.photo_back||'',x.photo_left||'',x.photo_right||'',Number(x.is_reliever)?1:0
-      ],function(e){ if(e) reject(e); else resolve({lastID:this.lastID}); });
-    });
-
-    // Save location assignments after staff insert. If an assignment fails, remove
-    // the newly-created staff record so the user never gets a false/partial member.
-    if(locationCodes.length){
-      try{
-        await new Promise((resolve,reject)=>{
-          const stmt=db.prepare('INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active) VALUES(?,?,?,1)');
-          let firstErr=null, pending=locationCodes.length;
-          locationCodes.forEach(code=>stmt.run([staffId,code,req.user.staff_id],e=>{
-            if(e) firstErr=firstErr||e;
-            if(--pending===0) stmt.finalize(fe=>fe?(reject(fe)):firstErr?reject(firstErr):resolve());
-          }));
-        });
-      }catch(e){
-        await new Promise(resolve=>db.run('DELETE FROM staff WHERE id=?',[row.lastID],()=>resolve()));
-        return res.status(500).json({error:'Member save failed; transaction rolled back: '+e.message});
-      }
-    }
-
-    audit(req.user,'STAFF_CREATED',staffId,
-      `${role} ${name}; parent=${parent||'adi123'}; locations=${locationCodes.join(',')||'none'}`);
-
-    return res.status(201).json({
-      ok:true,id:row.lastID,staff_id:staffId,role,name,post,salary,dob,department,
-      contact_number:contact,parent_id:parent,location_code:storedLocation,
-      assigned_locations:locationCodes,
-      message:`${role.replace('_',' ')} created successfully. Staff ID: ${staffId}`
-    });
-  }catch(e){
-    console.error('STAFF CREATE ERROR:',e);
-    if(/unique constraint/i.test(String(e.message||'')))
-      return res.status(409).json({error:`Staff ID ${staffId} already exists`});
-    return res.status(500).json({error:'Member could not be saved: '+e.message});
+  // Normal Admin hierarchy:
+  // Admin -> Field Officer / Officer -> Supervisor -> Guard.
+  // Every member created by a normal Admin requires Parent ID + Location.
+  if(adminCreating && role!=='admin'){
+    if(!parent)return res.status(400).json({error:`Parent ID is required for ${role}`});
+    if(!requestedLocations.length)return res.status(400).json({error:`Location Code is required for ${role}`});
   }
+
+  // Supervisor and Guard always require a parent and one exact working location.
+  if(['supervisor','guard'].includes(role)){
+    if(!parent)return res.status(400).json({error:`Parent ID is required for ${role}`});
+    if(!singleLocation)return res.status(400).json({error:`Location Code is required for ${role}`});
+    if(requestedLocations.length!==1)return res.status(400).json({error:`${role} can have only one Location Code`});
+  }
+
+  get('SELECT id,role,name,staff_id,status FROM staff WHERE staff_id=?',[staffId],(duplicateErr,duplicate)=>{
+    if(duplicateErr)return res.status(500).json({error:duplicateErr.message});
+    if(duplicate)return res.status(409).json({error:`Staff ID ${staffId} already exists. Use a unique Staff ID.`});
+
+    const finishCreation=(row,assignedCount=0)=>{
+      audit(req.user,'STAFF_CREATED',staffId,`${role} ${x.name} created; parent=${parent||'none'}; locations=${requestedLocations.join(',')||'none'}`);
+      res.status(201).json({id:row.lastID,staff_id:staffId,role,name:String(x.name).trim(),assigned_locations:requestedLocations,message:`Staff created successfully. Staff ID: ${staffId}`});
+    };
+
+    const saveAssignments=(row,done)=>{
+      if(!requestedLocations.length)return done(0);
+      db.serialize(()=>{
+        const stmt=db.prepare('INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active) VALUES(?,?,?,1)');
+        requestedLocations.forEach(code=>stmt.run(staffId,code,req.user.staff_id));
+        stmt.finalize(err=>err?res.status(500).json({error:'Member created but location assignment failed: '+err.message}):done(requestedLocations.length));
+      });
+    };
+
+    const validateAndCreate=()=>{
+      bcrypt.hash(password,12,(he,hashed)=>{
+        if(he)return res.status(500).json({error:'Password setup failed'});
+        const storedLocation = requestedLocations[0] || '';
+        run(`INSERT INTO staff(role,name,staff_id,password,post,salary,location_code,parent_id,dob,department,contact_number,dp,age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,driving_license,training_details,work_experience,photo_front,photo_back,photo_left,photo_right,is_reliever)
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [role,String(x.name).trim(),staffId,hashed,x.post||role,x.salary||0,storedLocation,parent,x.dob||'',x.department||'',x.contact_number||'',x.dp||'',
+           x.age||null,x.height||null,x.weight||null,x.blood_group||'',x.qualification||'',x.physical_level||'',x.medical_level||'',x.skills||'',x.police_verification||'',x.driving_license||'',x.training_details||'',x.work_experience||'',x.photo_front||'',x.photo_back||'',x.photo_left||'',x.photo_right||'',Number(x.is_reliever)?1:0],
+          res,row=>saveAssignments(row,count=>finishCreation(row,count)));
+      });
+    };
+
+    // Validate the normal Admin's parent first. This prevents creating an orphan account.
+    const validateAdminParent=next=>{
+      if(!adminCreating || role==='admin')return next();
+      get('SELECT id,role,status,staff_id FROM staff WHERE staff_id=?',[parent],(pe,pr)=>{
+        if(pe)return res.status(500).json({error:pe.message});
+        if(!pr || pr.role!=='admin' || pr.status!=='active')return res.status(400).json({error:'Parent ID must be the active Admin Staff ID'});
+        if(parent!==req.user.staff_id)return res.status(400).json({error:'Parent ID must be the logged-in Admin Staff ID'});
+        next();
+      });
+    };
+
+    // Validate all selected locations. A Field Officer may have multiple locations;
+    // Officer uses one location. Admin can only use locations assigned to itself.
+    const validateLocations=next=>{
+      if(!requestedLocations.length)return next();
+      const placeholders=requestedLocations.map(()=>'?').join(',');
+      db.all(`SELECT code FROM locations WHERE active=1 AND code IN (${placeholders})`,requestedLocations,(le,rows)=>{
+        if(le)return res.status(500).json({error:le.message});
+        const valid=new Set((rows||[]).map(r=>String(r.code)));
+        const invalid=requestedLocations.filter(c=>!valid.has(c));
+        if(invalid.length)return res.status(400).json({error:'Invalid or inactive Location Code: '+invalid.join(', ')});
+        if(req.user.role==='master_admin')return next();
+        db.all(`SELECT location_code FROM location_assignments WHERE staff_id=? AND active=1 AND location_code IN (${placeholders})`,[req.user.staff_id,...requestedLocations],(ae,owned)=>{
+          if(ae)return res.status(500).json({error:ae.message});
+          const ownedSet=new Set((owned||[]).map(r=>String(r.location_code)));
+          const notOwned=requestedLocations.filter(c=>!ownedSet.has(c));
+          if(notOwned.length)return res.status(403).json({error:'Admin can use only its assigned locations: '+notOwned.join(', ')});
+          next();
+        });
+      });
+    };
+
+    const validateSupervisorParent=next=>{
+      if(role!=='supervisor')return next();
+      get('SELECT role,status FROM staff WHERE staff_id=?',[parent],(e,p)=>{
+        if(e)return res.status(500).json({error:e.message});
+        if(!p || p.role!=='field_officer' || p.status!=='active')return res.status(400).json({error:'Supervisor Parent ID must be an active Field Officer Staff ID'});
+        get('SELECT id FROM location_assignments WHERE staff_id=? AND location_code=? AND active=1',[parent,singleLocation],(ae,assigned)=>{
+          if(ae)return res.status(500).json({error:ae.message});
+          if(!assigned)return res.status(400).json({error:'This Location is not assigned to the selected Field Officer'});
+          next();
+        });
+      });
+    };
+
+    const validateGuardParent=next=>{
+      if(role!=='guard')return next();
+      get('SELECT role,status,location_code FROM staff WHERE staff_id=?',[parent],(e,p)=>{
+        if(e)return res.status(500).json({error:e.message});
+        if(!p || p.role!=='supervisor' || p.status!=='active')return res.status(400).json({error:'Guard Parent ID must be an active Supervisor Staff ID'});
+        if(String(p.location_code||'')!==singleLocation)return res.status(400).json({error:'Guard location must exactly match the Supervisor location'});
+        next();
+      });
+    };
+
+    validateAdminParent(()=>validateLocations(()=>validateSupervisorParent(()=>validateGuardParent(validateAndCreate))));
+  });
 });
 // END SECTION: STAFF CREATION + HIERARCHY
-
 
 app.delete('/api/staff/:id',auth,roles('admin','master_admin'),(req,res)=>{
   get('SELECT id,role,staff_id,name,location_code FROM staff WHERE id=?',[req.params.id],(err,target)=>{
     if(err)return res.status(500).json({error:err.message});
     if(!target)return res.status(404).json({error:'Staff not found'});
-    if(target.role==='master_admin')return res.status(403).json({error:'Director cannot be deleted'});
+    if(target.role==='master_admin')return res.status(403).json({error:'Master Admin cannot be deleted'});
     if(req.user.role==='admin' && target.role==='admin')
-      return res.status(403).json({error:'Only Director can delete Admin accounts'});
+      return res.status(403).json({error:'Only Master Admin can delete Admin accounts'});
     const remove=()=>db.serialize(()=>{
       db.run('DELETE FROM location_assignments WHERE staff_id=?',[target.staff_id]);
       db.run('DELETE FROM shift_schedules WHERE staff_id=?',[target.staff_id]);
@@ -810,11 +630,11 @@ app.put('/api/staff/:id/profile',auth,roles('admin','master_admin'),(req,res)=>{
   get('SELECT * FROM staff WHERE id=?',[req.params.id],(err,s)=>{
     if(err)return res.status(500).json({error:err.message});
     if(!s)return res.status(404).json({error:'Staff not found'});
-    if(s.role==='master_admin')return res.status(403).json({error:'Director profile is protected'});
+    if(s.role==='master_admin')return res.status(403).json({error:'Master Admin profile is protected'});
     const newRole=['admin','field_officer','officer','supervisor','guard'].includes(x.role)?x.role:s.role;
-    // Normal Admin cannot edit another Admin, create/elevate to Admin, or touch Director.
+    // Normal Admin cannot edit another Admin, create/elevate to Admin, or touch Master Admin.
     if(req.user.role==='admin' && (s.role==='admin' || s.role==='master_admin' || newRole==='admin')){
-      return res.status(403).json({error:'Only Director can manage Admin accounts'});
+      return res.status(403).json({error:'Only Master Admin can manage Admin accounts'});
     }
     const location=String(x.location_code||'').trim();
     const parent=String(x.parent_id||'').trim();
@@ -979,9 +799,7 @@ app.post('/api/relievers/assign',auth,roles('admin','master_admin'),async(req,re
       if(le)return res.status(500).json({error:le.message}); if(!lr)return res.status(400).json({error:'Invalid or inactive Location Code'});
       run('UPDATE staff SET is_reliever=1,location_code=?,reliever_duty_hours=?,reliever_shift=? WHERE id=?',[location,dutyHours,shift,s.id],res,async()=>{
         // Save an in-app notification for the assigned reliever.
-        const relieverMessage=`Reliever Duty assigned at ${location} • ${dutyHours} Hours • ${shift}`;
-        db.run('INSERT INTO reliever_notifications(staff_id,message,created_at,read_at) VALUES(?,?,?,NULL)',[s.staff_id,relieverMessage,new Date().toISOString()]);
-        notifyStaff(s.staff_id,relieverMessage,'Reliever');
+        db.run('INSERT INTO reliever_notifications(staff_id,message,created_at,read_at) VALUES(?,?,?,NULL)',[s.staff_id,`Reliever Duty assigned at ${location} • ${dutyHours} Hours • ${shift}`,new Date().toISOString()]);
         const text=`SNDF MANAGEMENT – Reliever Duty\n\nHello ${s.name},\nYou have been assigned as a RELIEVER.\n\nLocation: ${location}\nDuty Hours: ${dutyHours} Hours\nShift: ${shift} (${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end})\nStaff ID: ${s.staff_id}\nAssigned by: ${req.user.name||req.user.staff_id}\n\nPlease report to the assigned location and complete live attendance check-in.\n\nSNDF Support Services\nWhatsApp: ${process.env.WHATSAPP_SENDER_NUMBER||'8959872715'}`;
         const wa=await sendWhatsAppMessage(s.contact_number,text);
         audit(req.user,'RELIEVER_ASSIGNED',s.staff_id,`${location}; ${dutyHours} hour; ${shift}; whatsapp=${wa.sent?'sent':'not-sent'}`);
@@ -999,15 +817,9 @@ app.get('/api/relievers',auth,roles('admin','master_admin','field_officer'),(req
 });
 app.put('/api/staff/:id/reliever',auth,roles('admin','master_admin'),(req,res)=>{
   const enabled=Number(req.body?.is_reliever)?1:0;
-  get('SELECT staff_id,name FROM staff WHERE id=?',[req.params.id],(ge,member)=>{
-    if(ge)return res.status(500).json({error:ge.message});
-    if(!member)return res.status(404).json({error:'Staff not found'});
-    run('UPDATE staff SET is_reliever=?,reliever_parent_id=? WHERE id=?',[enabled,enabled?'':null,req.params.id],res,()=>{
-      const text=enabled?'You have been marked as a Reliever.':'Your Reliever status has been removed.';
-      notifyStaff(member.staff_id,text,'Reliever');
-      audit(req.user,enabled?'RELIEVER_ENABLED':'RELIEVER_DISABLED',req.params.id,enabled?'Marked as reliever':'Removed from reliever list');
-      res.json({message:enabled?'Member marked as Reliever':'Member removed from Reliever list'});
-    });
+  run('UPDATE staff SET is_reliever=?,reliever_parent_id=? WHERE id=?',[enabled,enabled?'':null,req.params.id],res,()=>{
+    audit(req.user,enabled?'RELIEVER_ENABLED':'RELIEVER_DISABLED',req.params.id,enabled?'Marked as reliever':'Removed from reliever list');
+    res.json({message:enabled?'Member marked as Reliever':'Member removed from Reliever list'});
   });
 });
 app.put('/api/staff/:id/location',auth,roles('admin','master_admin'),(req,res)=>{
@@ -1020,11 +832,7 @@ app.put('/api/staff/:id/location',auth,roles('admin','master_admin'),(req,res)=>
     if(e)return res.status(500).json({error:e.message}); if(!s)return res.status(404).json({error:'Staff not found'});
     if(!['officer','guard','supervisor'].includes(s.role))return res.status(400).json({error:'Reliever location can be changed only for Officer/Guard/Supervisor'});
     const saveLocation=(relieverParent)=>{
-      run('UPDATE staff SET location_code=?,reliever_parent_id=? WHERE id=?',[location,relieverParent||'',s.id],res,()=>{
-        notifyStaff(s.staff_id,`Reliever Location changed to ${location}.`,'Point Change');
-        audit(req.user,'RELIEVER_LOCATION_CHANGED',s.staff_id,`${location}; reliever parent=${relieverParent||''}`);
-        res.json({message:'Location changed',location_code:location,reliever_parent_id:relieverParent||''});
-      });
+      run('UPDATE staff SET location_code=?,reliever_parent_id=? WHERE id=?',[location,relieverParent||'',s.id],res,()=>{audit(req.user,'RELIEVER_LOCATION_CHANGED',s.staff_id,`${location}; reliever parent=${relieverParent||''}`);res.json({message:'Location changed',location_code:location,reliever_parent_id:relieverParent||''});});
     };
     get("SELECT staff_id FROM staff WHERE role='supervisor' AND location_code=? AND status='active' ORDER BY id LIMIT 1",[location],(pe,sp)=>{
       if(pe)return res.status(500).json({error:pe.message});
@@ -1075,7 +883,7 @@ app.get('/api/team-attendance',auth,roles('field_officer','officer','supervisor'
 
 // =====================================================
 // TASK MANAGEMENT - role hierarchy
-// Director -> Admin/Field Officer/Officer/Supervisor/Guard
+// Master Admin -> Admin/Field Officer/Officer/Supervisor/Guard
 // Admin -> Field Officer/Officer/Supervisor/Guard
 // Field Officer -> Officer
 // Officer -> Supervisor; Supervisor -> Guard
@@ -1140,7 +948,7 @@ app.post('/api/tasks',auth,(req,res)=>{
 // =====================================================
 // SECTION: FUNCTION labelRole
 // =====================================================
-function labelRole(r){return ({master_admin:'Director',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r)}
+function labelRole(r){return ({master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r)}
 // END SECTION: FUNCTION labelRole
 
 // =====================================================
@@ -1230,7 +1038,7 @@ app.get('/api/suspension-notifications',auth,roles('admin','master_admin'),(req,
 // =====================================================
 // HOURLY POINT UPDATE
 // Guard + Supervisor must submit a live photo + GPS once every hour during Night Shift.
-// Day Shift is not mandatory. Admin/Director can monitor all submitted points.
+// Day Shift is not mandatory. Admin/Master Admin can monitor all submitted points.
 // =====================================================
 // =====================================================
 // SECTION: FUNCTION pointShiftFromAttendance
@@ -1291,7 +1099,7 @@ app.get('/api/point-updates',auth,roles('admin','master_admin'),(req,res)=>{
   all(sql,params,res);
 });
 
-// Profile viewer for Admin/Director. Read-only; no edit action is exposed.
+// Profile viewer for Admin/Master Admin. Read-only; no edit action is exposed.
 app.get('/api/staff/:id/profile-view',auth,roles('admin','master_admin'),(req,res)=>{
   get(`SELECT id,role,name,staff_id,post,salary,location_code,parent_id,status,suspended_until,suspension_reason,dob,department,contact_number,dp,
       age,height,weight,blood_group,qualification,physical_level,medical_level,skills,police_verification,driving_license,
@@ -1302,7 +1110,7 @@ app.get('/api/staff/:id/profile-view',auth,roles('admin','master_admin'),(req,re
 });
 
 
-// PROFILE PDF DOWNLOAD - Admin/Director only.
+// PROFILE PDF DOWNLOAD - Admin/Master Admin only.
 // Generates a real PDF and embeds all four full-body photos stored as data URLs.
 // =====================================================
 // SECTION: FUNCTION profileImageBuffer
@@ -1339,7 +1147,7 @@ app.get('/api/staff/:id/profile-pdf',auth,roles('admin','master_admin'),(req,res
     if(e)return res.status(500).json({error:e.message});
     if(!p)return res.status(404).json({error:'Profile not found'});
 
-    const roleLabel={master_admin:'Director',admin:'Admin',field_officer:'Field Officer',supervisor:'Supervisor',guard:'Guard'}[p.role]||p.role;
+    const roleLabel={master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',supervisor:'Supervisor',guard:'Guard'}[p.role]||p.role;
     const doc=new PDFDocument({size:'A4',margin:42,info:{Title:`SNDF Profile - ${p.name}`,Author:'SNDF Management'}});
     const chunks=[];
     doc.on('data',c=>chunks.push(c));
@@ -1435,42 +1243,19 @@ app.get('/api/attendance',auth,(req,res)=>{
        WHERE a.staff_id=? ORDER BY a.id DESC`;
   all(sql,['admin','master_admin'].includes(req.user.role)?[]:[req.user.staff_id],res);
 });
-// MAIN OFFICE — single designated check-in/out point for Field Officers.
-app.get('/api/main-office',auth,(req,res)=>{
-  get('SELECT id,code,name,address,latitude,longitude,radius_meters,duty_shift,duty_hours FROM locations WHERE active=1 AND is_main_office=1 LIMIT 1',[],(e,row)=>{
-    if(e)return res.status(500).json({error:e.message});
-    if(!row)return res.status(404).json({error:'Main Office is not configured. Admin/Director must mark one location as Main Office.'});
-    res.json(row);
-  });
-});
-
 app.post('/api/attendance',auth,(req,res)=>{
   const x=req.body||{};
   const targetId=['admin','master_admin'].includes(req.user.role) ? (x.staff_id||req.user.staff_id) : req.user.staff_id;
   get('SELECT * FROM staff WHERE staff_id=?',[targetId],(err,s)=>{
     if(err)return res.status(500).json({error:err.message}); if(!s)return res.status(404).json({error:'Staff ID not found'});
     if(!['admin','master_admin'].includes(req.user.role) && s.staff_id!==req.user.staff_id)return res.status(403).json({error:'You can mark attendance only for yourself'});
-    // Field Officers are mobile operational staff: their attendance is always recorded
-    // at the designated Main Office, while their assigned locations are management scope only.
-    const resolveAttendanceLocation=(cb)=>{
-      if(['master_admin','admin','field_officer','officer'].includes(s.role)){
-        return get('SELECT * FROM locations WHERE active=1 AND is_main_office=1 LIMIT 1',[],(oe,office)=>{
-          if(oe)return cb(oe);
-          if(!office)return res.status(400).json({error:'Main Office is not configured. Please ask Admin/Director to mark one location as Main Office.'});
-          cb(null,office);
-        });
-      }
-      get('SELECT * FROM locations WHERE code=? AND active=1',[s.location_code],cb);
-    };
-    resolveAttendanceLocation((le,loc)=>{
+    get('SELECT duty_hours FROM locations WHERE code=? AND active=1',[s.location_code],(le,loc)=>{
     if(le)return res.status(500).json({error:le.message});
-    const attendanceLocationCode=String(loc?.code||'').trim();
-    if(!attendanceLocationCode)return res.status(400).json({error:'Attendance Location is not configured for this staff member.'});
     const dutyHours=Number(loc?.duty_hours)===8?8:12;
     const requestedShift=String(x.shift||'');
     const attendanceDate=new Date().toISOString().slice(0,10);
     const applyAttendance=()=>{
-      getEffectiveShift(targetId,attendanceLocationCode,attendanceDate,(se,saved)=>{
+      getEffectiveShift(targetId,s.location_code,attendanceDate,(se,saved)=>{
         const shift=String(saved?.shift||requestedShift||'');
         const effectiveDuty=Number(saved?.duty_hours)===8?8:dutyHours;
         if(!isShiftAllowedForDuty(shift,effectiveDuty)) return res.status(400).json({error:`Invalid shift for ${effectiveDuty}-hour location. Allowed: ${shiftForDutyHours(effectiveDuty).join(', ')}`});
@@ -1478,9 +1263,9 @@ app.post('/api/attendance',auth,(req,res)=>{
       });
     };
     const continueAttendance=(shift,effectiveDuty)=>{
-    checkGeofence(attendanceLocationCode,x.location||'',(ge,geo)=>{
+    checkGeofence(s.location_code,x.location||'',(ge,geo)=>{
     if(ge)return res.status(500).json({error:ge.message});
-    if(geo.configured && !geo.allowed) return res.status(403).json({error:geo.error||`You are outside ${attendanceLocationCode} geofence (${geo.distance}m / ${geo.radius}m).`});
+    if(geo.configured && !geo.allowed) return res.status(403).json({error:geo.error||`You are outside ${s.location_code} geofence (${geo.distance}m / ${geo.radius}m).`});
     const now=new Date(), date=attendanceDate, time=now.toTimeString().slice(0,8), iso=now.toISOString();
     // 30-minute check-in window: normal staff cannot start a shift more than 30 minutes after shift start.
     // Admin reliever check-ins use the dedicated reliever endpoint and are exempt from this window.
@@ -1503,7 +1288,7 @@ app.post('/api/attendance',auth,(req,res)=>{
         if(de)return res.status(500).json({error:de.message});
         if(existing)return res.status(409).json({error:`${shift} attendance is already completed today`});
         run('INSERT INTO attendance(staff_id,name,date,photo,location,shift,duty_hours,check_in,check_in_at,attendance_status) VALUES(?,?,?,?,?,?,?,?,?,?)',
-          [s.staff_id,s.name,date,x.photo||'',attendanceLocationCode+' | '+(x.location||''),shift,effectiveDuty,time,iso,'Present - Shift Started'],res,row=>{audit(req.user,'ATTENDANCE_CHECKIN',s.staff_id,`${shift}; ${dutyHours} hour duty; attendance_location=${attendanceLocationCode}; gps=${x.location||''}`);res.status(201).json({id:row.lastID,shift,shift_time:`${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end}`,duty_hours:dutyHours,message:`${shift} check-in saved (${dutyHours} hour duty)`});});
+          [s.staff_id,s.name,date,x.photo||'',x.location||'',shift,effectiveDuty,time,iso,'Present - Shift Started'],res,row=>{audit(req.user,'ATTENDANCE_CHECKIN',s.staff_id,`${shift}; ${dutyHours} hour duty; location=${x.location||''}`);res.status(201).json({id:row.lastID,shift,shift_time:`${SHIFT_SCHEDULES[shift].start} - ${SHIFT_SCHEDULES[shift].end}`,duty_hours:dutyHours,message:`${shift} check-in saved (${dutyHours} hour duty)`});});
       });
     });
     });
@@ -1514,7 +1299,7 @@ app.post('/api/attendance',auth,(req,res)=>{
 });
 // =====================================================
 // SECTION: ADMIN MARK PRESENT BY STAFF ID
-// Admin/Director can manually mark a staff member Present using Staff ID.
+// Admin/Master Admin can manually mark a staff member Present using Staff ID.
 // This creates a completed attendance record without requiring a camera photo.
 // =====================================================
 app.post('/api/attendance/admin-mark-present',auth,roles('admin','master_admin'),(req,res)=>{
@@ -1601,9 +1386,9 @@ app.get('/api/attendance/export',auth,roles('admin','master_admin'),(req,res)=>{
   all(sql,params,{json:x=>{ const rows=x; const header='Date,Staff ID,Name,Role,Location Code,Duty Hours,Shift,Check In,Check Out,Hours,Status,Attendance Location'; const csv=[header,...rows.map(r=>[r.date,r.staff_id,r.name,r.role,r.location_code,r.duty_hours,r.shift,r.check_in,r.check_out,r.hours_worked,r.attendance_status,r.location].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\n'); res.setHeader('Content-Type','text/csv'); res.setHeader('Content-Disposition',`attachment; filename="${roleFilter||'all'}-${dateFilter||'all'}-attendance.csv"`); res.send(csv); }});
 });
 
-// FINES - Admin, Field Officer and Officer can issue fines to Guard or Supervisor. Others can view.
+// FINES - Admin and Field Officer can issue fines to Guard or Supervisor. Others can view.
 app.get('/api/fines',auth,(req,res)=>{ const sql=['admin','master_admin'].includes(req.user.role) ? 'SELECT * FROM fines ORDER BY id DESC' : 'SELECT * FROM fines WHERE guard_id=? ORDER BY id DESC'; all(sql,['admin','master_admin'].includes(req.user.role)?[]:[req.user.staff_id],res); });
-app.post('/api/fines',auth,roles('admin','master_admin','field_officer','officer'),(req,res)=>{
+app.post('/api/fines',auth,roles('admin','master_admin','field_officer'),(req,res)=>{
   const x=req.body||{}; const targetId=String(x.target_id||'').trim();
   if(!targetId||!x.reason||Number(x.amount)<=0)return res.status(400).json({error:'Target ID, reason and positive fine amount are required'});
   get('SELECT role FROM staff WHERE staff_id=?',[targetId],(err,s)=>{
@@ -1690,16 +1475,6 @@ app.post('/api/point-transfers',auth,roles('supervisor','officer','field_officer
     if(e) return res.status(500).json({error:e.message});
     const allowed = !!loc;
     if(!allowed) return res.status(400).json({error:'Invalid Location Code'});
-    if(req.user.role==='officer'){
-      return get("SELECT 1 FROM location_assignments WHERE staff_id=? AND location_code=? AND active=1",
-        [req.user.staff_id,to],(ae,assigned)=>{
-          if(ae)return res.status(500).json({error:ae.message});
-          if(!assigned)return res.status(403).json({error:'Officer can request point transfer only to one of its assigned work locations'});
-          continueTransfer();
-        });
-    }
-    continueTransfer();
-    function continueTransfer(){
     get("SELECT id FROM point_transfer_requests WHERE staff_id=? AND status='Pending'",[req.user.staff_id],(pe,pending)=>{
       if(pe)return res.status(500).json({error:pe.message});
       if(pending)return res.status(409).json({error:'A point transfer request is already pending'});
@@ -1709,54 +1484,27 @@ app.post('/api/point-transfers',auth,roles('supervisor','officer','field_officer
           res.status(201).json({id:row.lastID,message:'Point transfer request sent to Admin'});
         });
     });
-    }
   });
 });
 app.put('/api/point-transfers/:id/approve',auth,roles('admin','master_admin'),(req,res)=>{
-  get("SELECT p.*,s.parent_id AS staff_parent_id FROM point_transfer_requests p LEFT JOIN staff s ON s.staff_id=p.staff_id WHERE p.id=?",[req.params.id],(e,r)=>{
+  get("SELECT * FROM point_transfer_requests WHERE id=?",[req.params.id],(e,r)=>{
     if(e)return res.status(500).json({error:e.message});
     if(!r)return res.status(404).json({error:'Transfer request not found'});
     if(r.status!=='Pending')return res.status(409).json({error:'Request already reviewed'});
-    const finishApproval=(newParent)=>{
-      db.run("UPDATE staff SET location_code=?, parent_id=COALESCE(?,parent_id) WHERE staff_id=? AND role IN ('field_officer','officer','supervisor','guard')",[r.to_location,newParent||null,r.staff_id],function(ue){
+    db.serialize(()=>{
+      db.run("UPDATE staff SET location_code=? WHERE staff_id=? AND role IN ('field_officer','officer','supervisor','guard')",[r.to_location,r.staff_id],function(ue){
         if(ue)return res.status(500).json({error:ue.message});
         if(this.changes!==1)return res.status(404).json({error:'Staff member not found'});
         db.run("UPDATE point_transfer_requests SET status='Approved',reviewed_at=?,reviewed_by=? WHERE id=?",[new Date().toISOString(),req.user.staff_id,r.id],(re)=>{
           if(re)return res.status(500).json({error:re.message});
-          audit(req.user,'POINT_TRANSFER_APPROVED',r.staff_id,`${r.from_location||''} -> ${r.to_location}; parent=${newParent||'unchanged'}`);
-          notifyStaff(r.staff_id,`Point Transfer Approved: ${r.from_location||'—'} → ${r.to_location}${newParent?` • New Parent ID: ${newParent}`:''}`,'Point Change');
-          res.json({message:'Point transfer approved',staff_id:r.staff_id,new_location:r.to_location,new_parent_id:newParent||null});
+          audit(req.user,'POINT_TRANSFER_APPROVED',r.staff_id,`${r.from_location||''} -> ${r.to_location}`);
+          res.json({message:'Point transfer approved',staff_id:r.staff_id,new_location:r.to_location});
         });
       });
-    };
-    // Moving a point also keeps the hierarchy valid: Supervisor gets an active Field Officer
-    // assigned to the destination; Guard gets a Supervisor already working at that point.
-    if(r.staff_role==='supervisor'){
-      const currentParent=String(r.staff_parent_id||'');
-      get("SELECT staff_id FROM staff WHERE staff_id=? AND role='field_officer' AND status='active' AND EXISTS (SELECT 1 FROM location_assignments la WHERE la.staff_id=staff.staff_id AND la.location_code=? AND la.active=1)",[currentParent,r.to_location],(ce,cur)=>{
-        if(ce)return res.status(500).json({error:ce.message});
-        if(cur)return finishApproval(currentParent);
-        get("SELECT s.staff_id FROM staff s JOIN location_assignments la ON la.staff_id=s.staff_id AND la.active=1 AND la.location_code=? WHERE s.role='field_officer' AND s.status='active' ORDER BY s.id LIMIT 1",[r.to_location],(fe,fo)=>{
-          if(fe)return res.status(500).json({error:fe.message});
-          if(!fo)return res.status(400).json({error:'No Field Officer is assigned to the destination Location'});
-          finishApproval(fo.staff_id);
-        });
-      });
-    } else if(r.staff_role==='guard'){
-      const currentParent=String(r.staff_parent_id||'');
-      get("SELECT staff_id FROM staff WHERE staff_id=? AND role='supervisor' AND status='active' AND location_code=?",[currentParent,r.to_location],(ce,cur)=>{
-        if(ce)return res.status(500).json({error:ce.message});
-        if(cur)return finishApproval(currentParent);
-        get("SELECT staff_id FROM staff WHERE role='supervisor' AND status='active' AND location_code=? ORDER BY id LIMIT 1",[r.to_location],(se,sup)=>{
-          if(se)return res.status(500).json({error:se.message});
-          if(!sup)return res.status(400).json({error:'No active Supervisor exists at the destination Location'});
-          finishApproval(sup.staff_id);
-        });
-      });
-    } else finishApproval(null);
+    });
   });
 });
-// DIRECT POINT TRANSFER - Admin/Director can change any non-admin staff point by Staff ID without a request.
+// DIRECT POINT TRANSFER - Admin/Master Admin can change any non-admin staff point by Staff ID without a request.
 app.put('/api/point-transfers/direct',auth,roles('admin','master_admin'),(req,res)=>{
   const staffId=String(req.body?.staff_id||'').trim();
   const to=String(req.body?.to_location||'').trim();
@@ -1765,42 +1513,20 @@ app.put('/api/point-transfers/direct',auth,roles('admin','master_admin'),(req,re
   get('SELECT * FROM staff WHERE staff_id=?',[staffId],(e,s)=>{
     if(e)return res.status(500).json({error:e.message});
     if(!s)return res.status(404).json({error:'Staff ID not found'});
-    if(['master_admin','admin'].includes(s.role))return res.status(403).json({error:'Admin/Director point cannot be changed from Point Transfer'});
+    if(['master_admin','admin'].includes(s.role))return res.status(403).json({error:'Admin/Master Admin point cannot be changed from Point Transfer'});
     get('SELECT code FROM locations WHERE code=? AND active=1',[to],(le,loc)=>{
       if(le)return res.status(500).json({error:le.message});
       if(!loc)return res.status(400).json({error:'Invalid or inactive Location Code'});
       if(String(s.location_code||'')===to)return res.status(400).json({error:'Staff is already assigned to this point'});
-      const saveDirect=(newParent)=>{
-        db.run('UPDATE staff SET location_code=?, parent_id=COALESCE(?,parent_id) WHERE staff_id=?',[to,newParent||null,staffId],function(ue){
-          if(ue)return res.status(500).json({error:ue.message});
-          if(this.changes!==1)return res.status(404).json({error:'Staff member not found'});
-          run('INSERT INTO point_transfer_requests(staff_id,staff_name,staff_role,from_location,to_location,reason,status,requested_at,reviewed_at,reviewed_by) VALUES(?,?,?,?,?,?,?,?,?,?)',
-            [s.staff_id,s.name,s.role,s.location_code||'',to,reason||'Direct transfer by Admin','Direct',new Date().toISOString(),new Date().toISOString(),req.user.staff_id],res,()=>{
-              audit(req.user,'POINT_TRANSFER_DIRECT',s.staff_id,`${s.location_code||''} -> ${to}${newParent?` | parent=${newParent}`:''}${reason?` | ${reason}`:''}`);
-              notifyStaff(s.staff_id,`Point changed from ${s.location_code||'—'} to ${to}${newParent?` • New Parent ID: ${newParent}`:''}${reason?` • ${reason}`:''}`,'Point Change');
-              res.json({message:`Point changed successfully for ${s.staff_id}`,staff_id:s.staff_id,new_location:to,new_parent_id:newParent||null});
-            });
-        });
-      };
-      if(s.role==='supervisor'){
-        const currentParent=String(s.parent_id||'');
-        get("SELECT staff_id FROM staff WHERE staff_id=? AND role='field_officer' AND status='active' AND EXISTS (SELECT 1 FROM location_assignments la WHERE la.staff_id=staff.staff_id AND la.location_code=? AND la.active=1)",[currentParent,to],(ce,cur)=>{
-          if(ce)return res.status(500).json({error:ce.message});
-          if(cur)return saveDirect(currentParent);
-          get("SELECT s2.staff_id FROM staff s2 JOIN location_assignments la ON la.staff_id=s2.staff_id AND la.active=1 AND la.location_code=? WHERE s2.role='field_officer' AND s2.status='active' ORDER BY s2.id LIMIT 1",[to],(fe,fo)=>{
-            if(fe)return res.status(500).json({error:fe.message}); if(!fo)return res.status(400).json({error:'No Field Officer is assigned to the destination Location'}); saveDirect(fo.staff_id);
+      db.run('UPDATE staff SET location_code=? WHERE staff_id=?',[to,staffId],function(ue){
+        if(ue)return res.status(500).json({error:ue.message});
+        if(this.changes!==1)return res.status(404).json({error:'Staff member not found'});
+        run('INSERT INTO point_transfer_requests(staff_id,staff_name,staff_role,from_location,to_location,reason,status,requested_at,reviewed_at,reviewed_by) VALUES(?,?,?,?,?,?,?,?,?,?)',
+          [s.staff_id,s.name,s.role,s.location_code||'',to,reason||'Direct transfer by Admin','Direct',new Date().toISOString(),new Date().toISOString(),req.user.staff_id],res,()=>{
+            audit(req.user,'POINT_TRANSFER_DIRECT',s.staff_id,`${s.location_code||''} -> ${to}${reason?` | ${reason}`:''}`);
+            res.json({message:`Point changed successfully for ${s.staff_id}`,staff_id:s.staff_id,new_location:to});
           });
-        });
-      } else if(s.role==='guard'){
-        const currentParent=String(s.parent_id||'');
-        get("SELECT staff_id FROM staff WHERE staff_id=? AND role='supervisor' AND status='active' AND location_code=?",[currentParent,to],(ce,cur)=>{
-          if(ce)return res.status(500).json({error:ce.message});
-          if(cur)return saveDirect(currentParent);
-          get("SELECT staff_id FROM staff WHERE role='supervisor' AND status='active' AND location_code=? ORDER BY id LIMIT 1",[to],(se,sup)=>{
-            if(se)return res.status(500).json({error:se.message}); if(!sup)return res.status(400).json({error:'No active Supervisor exists at the destination Location'}); saveDirect(sup.staff_id);
-          });
-        });
-      } else saveDirect(null);
+      });
     });
   });
 });
@@ -1813,13 +1539,9 @@ app.put('/api/point-transfers/:id/reject',auth,roles('admin','master_admin'),(re
   });
 });
 
-// RELIEVER NOTIFICATIONS - Staff receive a notification whenever Admin/Director assigns reliever duty.
+// RELIEVER NOTIFICATIONS - Staff receive a notification whenever Admin/Master Admin assigns reliever duty.
 app.get('/api/reliever-notifications',auth,(req,res)=>all('SELECT * FROM reliever_notifications WHERE staff_id=? ORDER BY id DESC LIMIT 50',[req.user.staff_id],res));
 app.put('/api/reliever-notifications/:id/read',auth,(req,res)=>run('UPDATE reliever_notifications SET read_at=? WHERE id=? AND staff_id=?',[new Date().toISOString(),req.params.id,req.user.staff_id],res,()=>res.json({message:'Notification marked as read'})));
-
-// STAFF MESSAGE BOX - direct messages such as Reliever and Point Change alerts.
-app.get('/api/messages',auth,(req,res)=>all('SELECT * FROM staff_messages WHERE staff_id=? ORDER BY id DESC LIMIT 100',[req.user.staff_id],res));
-app.put('/api/messages/:id/read',auth,(req,res)=>run('UPDATE staff_messages SET read_at=? WHERE id=? AND staff_id=?',[new Date().toISOString(),req.params.id,req.user.staff_id],res,()=>res.json({message:'Message marked as read'})));
 
 // Notice / Help.
 app.get('/api/notices',auth,(req,res)=>{ const sql=['admin','master_admin'].includes(req.user.role) ? 'SELECT * FROM notices ORDER BY id DESC LIMIT 200' : "SELECT * FROM notices WHERE to_role=? OR to_role='all' OR from_role=? ORDER BY id DESC LIMIT 200"; all(sql,['admin','master_admin'].includes(req.user.role)?[]:[req.user.role,req.user.role],res); });
@@ -1983,11 +1705,11 @@ db.run(`CREATE TABLE IF NOT EXISTS location_assignments (
 )`);
 db.run(`INSERT OR IGNORE INTO location_assignments(staff_id,location_code,assigned_by,active)
   SELECT staff_id,location_code,'system-migration',1 FROM staff
-  WHERE role IN ('admin','field_officer','officer') AND TRIM(COALESCE(location_code,''))<>''`);
+  WHERE role IN ('admin','field_officer') AND TRIM(COALESCE(location_code,''))<>''`);
 
 // =====================================================
 // SECTION: LOCATION SCOPE HELPERS
-// Director sees all locations. Admin/Field Officer see only locations assigned to them.
+// Master Admin sees all locations. Admin/Field Officer see only locations assigned to them.
 // Supervisor/Guard see only their current location.
 // =====================================================
 function assignedLocations(staffId, cb){
@@ -2000,7 +1722,7 @@ function canUseLocation(req, code, cb){
   const location=String(code||'').trim();
   if(!location)return cb(null,false);
   if(req.user.role==='master_admin')return get('SELECT code FROM locations WHERE code=? AND active=1',[location],(e,r)=>cb(e,!!r));
-  if(['admin','field_officer','officer'].includes(req.user.role))return get(`SELECT la.id FROM location_assignments la JOIN locations l ON l.code=la.location_code
+  if(['admin','field_officer'].includes(req.user.role))return get(`SELECT la.id FROM location_assignments la JOIN locations l ON l.code=la.location_code
     WHERE la.staff_id=? AND la.location_code=? AND la.active=1 AND l.active=1 LIMIT 1`,[req.user.staff_id,location],(e,r)=>cb(e,!!r));
   cb(null,String(req.user.location_code||'')===location);
 }
@@ -2008,22 +1730,16 @@ function canUseLocation(req, code, cb){
 // END SECTION: LOCATION SCOPE HELPERS
 
 app.get('/api/locations', auth, (req, res) => {
-  // Safety net for an older database: never return a blank Location Code to the UI.
-  // Any legacy blank code is repaired before the location list is sent.
-  repairLegacyLocationCodes(err=>{
-    if(err) return res.status(500).json({error:'Unable to repair Location Codes: '+err.message});
-    if(req.user.role==='master_admin') return all('SELECT * FROM locations WHERE active=1 ORDER BY code ASC',[],res);
-  if(req.user.role==='admin') return all('SELECT * FROM locations WHERE active=1 ORDER BY code ASC',[],res);
-  if(['field_officer','officer'].includes(req.user.role)) return assignedLocations(req.user.staff_id,(err,rows)=>{
+  if(req.user.role==='master_admin') return all('SELECT * FROM locations ORDER BY code ASC',[],res);
+  if(['admin','field_officer'].includes(req.user.role)) return assignedLocations(req.user.staff_id,(err,rows)=>{
     if(err)return res.status(500).json({error:err.message});
     res.json(rows||[]);
   });
-    if(req.user.location_code) return all('SELECT * FROM locations WHERE code=? AND active=1 ORDER BY code ASC',[req.user.location_code],res);
-    res.json([]);
-  });
+  if(req.user.location_code) return all('SELECT * FROM locations WHERE code=? AND active=1 ORDER BY code ASC',[req.user.location_code],res);
+  res.json([]);
 });
 
-// LOCATION ASSIGNMENTS - only Director/Admin can distribute points.
+// LOCATION ASSIGNMENTS - only Master Admin/Admin can distribute points.
 app.get('/api/location-assignments', auth, roles('admin','master_admin'), (req,res)=>{
   const target=String(req.query.staff_id||'').trim();
   const sql=`SELECT la.id,la.staff_id,la.location_code,la.assigned_by,la.assigned_at,la.active,l.name,l.address,l.duty_shift,l.duty_hours
@@ -2038,8 +1754,8 @@ app.post('/api/location-assignments', auth, roles('admin','master_admin'), (req,
   if(!target||!locations.length)return res.status(400).json({error:'Staff ID and at least one Location Code are required'});
   get("SELECT id,role FROM staff WHERE staff_id=? AND status='active'",[target],(e,member)=>{
     if(e)return res.status(500).json({error:e.message});
-    if(!member || !['admin','field_officer','officer'].includes(member.role))return res.status(400).json({error:'Locations can only be assigned to Admin, Field Officer or Officer'});
-    if(req.user.role==='admin' && !['field_officer','officer'].includes(member.role))return res.status(403).json({error:'Admin can assign locations only to Field Officers or Officers'});
+    if(!member || !['admin','field_officer'].includes(member.role))return res.status(400).json({error:'Locations can only be assigned to Admin or Field Officer'});
+    if(req.user.role==='admin' && member.role!=='field_officer')return res.status(403).json({error:'Admin can assign locations only to Field Officers'});
     const verify=()=>{
       db.serialize(()=>{
         db.run('UPDATE location_assignments SET active=0 WHERE staff_id=?',[target]);
@@ -2058,16 +1774,22 @@ app.post('/api/location-assignments', auth, roles('admin','master_admin'), (req,
       const valid=new Set((rows||[]).map(r=>r.code));
       const bad=locations.filter(x=>!valid.has(x));
       if(bad.length)return res.status(400).json({error:'Invalid or inactive Location Code: '+bad.join(', ')});
-      // Master Admin and Admin can distribute any active location.
-      if(req.user.role==='master_admin' || req.user.role==='admin')return verify();
-      return res.status(403).json({error:'Only Admin or Master Admin can distribute locations'});
+      // Admin may only distribute locations that are already assigned to that Admin. Master can distribute any.
+      if(req.user.role==='master_admin')return verify();
+      db.all(`SELECT location_code FROM location_assignments WHERE staff_id=? AND active=1 AND location_code IN (${placeholders})`,[req.user.staff_id,...locations],(ae,owned)=>{
+        if(ae)return res.status(500).json({error:ae.message});
+        const ownedSet=new Set((owned||[]).map(r=>r.location_code));
+        const notOwned=locations.filter(x=>!ownedSet.has(x));
+        if(notOwned.length)return res.status(403).json({error:'Admin can assign only its own assigned locations: '+notOwned.join(', ')});
+        verify();
+      });
     });
   });
 });
 
 // =====================================================
 // SHIFT SCHEDULE MANAGEMENT
-// Admin/Director select Staff ID + Location + 8/12 hour shift.
+// Admin/Master Admin select Staff ID + Location + 8/12 hour shift.
 // =====================================================
 db.run(`CREATE TABLE IF NOT EXISTS shift_schedules (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2110,7 +1832,7 @@ app.get('/api/shift-schedules',auth,roles('admin','master_admin'),(req,res)=>{
   const params=[]; const where=[];
   if(date){where.push('ss.schedule_date<=?');params.push(date)}
   if(target){where.push('ss.staff_id=?');params.push(target)}
-  // Admin has full operational access to all active locations and schedules; no point filter is applied.
+  if(req.user.role==='admin'){where.push(`ss.location_code IN (SELECT location_code FROM location_assignments WHERE staff_id=? AND active=1)`);params.push(req.user.staff_id)}
   if(where.length)sql+=' WHERE '+where.join(' AND ');
   sql+=' ORDER BY ss.schedule_date DESC,ss.location_code,ss.staff_id';
   all(sql,params,res);
@@ -2189,7 +1911,7 @@ app.get('/api/location-ownership', auth, roles('admin','master_admin'), (req,res
 
 
 app.post('/api/locations', adminOnly, (req, res) => {
-  const { code, name, address = '', latitude, longitude, radius_meters = 200, duty_shift = '12_hour', is_main_office = 0 } = req.body || {};
+  const { code, name, address = '', latitude, longitude, radius_meters = 200, duty_shift = '12_hour' } = req.body || {};
   const lat = Number(latitude), lng = Number(longitude), radius = Number(radius_meters);
   const duty = String(duty_shift) === '8_hour' ? 8 : (String(duty_shift) === '12_hour' ? 12 : 0);
   if (!code || !name || !duty || !Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(radius) || radius <= 0) {
@@ -2199,18 +1921,12 @@ app.post('/api/locations', adminOnly, (req, res) => {
   const nameValue = String(name).trim();
 
   db.run(
-    `INSERT INTO locations (code,name,address,latitude,longitude,radius_meters,duty_shift,duty_hours,is_main_office)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
-    [codeValue, nameValue, String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty, is_main_office ? 1 : 0],
+    `INSERT INTO locations (code,name,address,latitude,longitude,radius_meters,duty_shift,duty_hours)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [codeValue, nameValue, String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty],
     function(err) {
-      if (err) {
-        if (String(err.message||'').toLowerCase().includes('unique')) return res.status(409).json({ error: `Location Code ${codeValue} already exists. Use a unique Location Code.` });
-        return res.status(400).json({ error: err.message });
-      }
+      if (err) return res.status(400).json({ error: err.message });
       const locationId = this.lastID;
-      if(is_main_office){
-        db.run('UPDATE locations SET is_main_office=0 WHERE id<>?',[locationId]);
-      }
 
       // An Admin owns locations it creates, so the new point is immediately usable
       // in Location Distribution and normal Admin location selectors.
@@ -2233,7 +1949,7 @@ app.post('/api/locations', adminOnly, (req, res) => {
 });
 
 app.put('/api/locations/:id', adminOnly, (req, res) => {
-  const { code, name, address = '', latitude, longitude, radius_meters = 200, duty_shift = '12_hour', active = 1, is_main_office = 0 } = req.body || {};
+  const { code, name, address = '', latitude, longitude, radius_meters = 200, duty_shift = '12_hour', active = 1 } = req.body || {};
   const lat = Number(latitude), lng = Number(longitude), radius = Number(radius_meters);
   const duty = String(duty_shift) === '8_hour' ? 8 : (String(duty_shift) === '12_hour' ? 12 : 0);
   if (!code || !name || !duty || !Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(radius) || radius <= 0) {
@@ -2246,27 +1962,19 @@ app.put('/api/locations/:id', adminOnly, (req, res) => {
     if(!existing)return res.status(404).json({error:'Location not found'});
 
     const continueUpdate = () => db.run(
-      `UPDATE locations SET code=?,name=?,address=?,latitude=?,longitude=?,radius_meters=?,duty_shift=?,duty_hours=?,active=?,is_main_office=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-      [newCode, String(name).trim(), String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty, active ? 1 : 0, is_main_office ? 1 : 0, req.params.id],
+      `UPDATE locations SET code=?,name=?,address=?,latitude=?,longitude=?,radius_meters=?,duty_shift=?,duty_hours=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+      [newCode, String(name).trim(), String(address).trim(), lat, lng, Math.round(radius), String(duty_shift), duty, active ? 1 : 0, req.params.id],
       function(err) {
-        if (err) {
-          if (String(err.message||'').toLowerCase().includes('unique')) return res.status(409).json({ error: `Location Code ${newCode} already exists. Use a unique Location Code.` });
-          return res.status(400).json({ error: err.message });
-        }
+        if (err) return res.status(400).json({ error: err.message });
         if (!this.changes) return res.status(404).json({ error: 'Location not found' });
-        if(is_main_office) db.run('UPDATE locations SET is_main_office=0 WHERE id<>?',[req.params.id]);
 
         // Keep all existing ownership records connected if the location code changes.
         if(existing.code!==newCode){
           db.run('UPDATE location_assignments SET location_code=? WHERE location_code=?',[newCode,existing.code],assignmentErr=>{
             if(assignmentErr)return res.status(500).json({error:assignmentErr.message});
-            db.run('UPDATE staff SET location_code=? WHERE location_code=?',[newCode,existing.code],staffErr=>{
-              if(staffErr)return res.status(500).json({error:staffErr.message});
-              db.run('UPDATE shift_schedules SET location_code=? WHERE location_code=?',[newCode,existing.code],()=>{});
-              audit(req.user,'LOCATION_UPDATED',newCode,`${existing.code} → ${newCode}`);
-              res.json({ ok: true, code:newCode });
-            });
-            return;
+            db.run('UPDATE shift_schedules SET location_code=? WHERE location_code=?',[newCode,existing.code],()=>{});
+            audit(req.user,'LOCATION_UPDATED',newCode,`${existing.code} → ${newCode}`);
+            res.json({ ok: true, code:newCode });
           });
         } else {
           audit(req.user,'LOCATION_UPDATED',newCode,'Location details updated');

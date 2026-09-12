@@ -2,9 +2,7 @@
 // SNDF MANAGEMENT | JAVASCRIPT SECTIONS
 // File-level guide: keep each feature inside its marked section.
 // =====================================================
-const API_URL=(location.hostname==='localhost'||location.hostname==='127.0.0.1')
-  ? '/api'
-  : 'https://sndf-management-production.up.railway.app/api';
+const API_URL='/api';
 const user=JSON.parse(sessionStorage.getItem('sndfUser')||'null');
 const role=document.body.dataset.role;
 if(!user||!role||!(user.role===role || (role==='admin'&&user.role==='master_admin'))) location.replace('login.html?role='+encodeURIComponent(role||'admin'));
@@ -12,7 +10,7 @@ const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 // =====================================================
 // SECTION: FUNCTION label
 // =====================================================
-function label(r){return {master_admin:'Director',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r}
+function label(r){return {master_admin:'Master Admin',admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'}[r]||r}
 // END SECTION: FUNCTION label
 
 const isAdminRole=['admin','master_admin'].includes(role);
@@ -30,7 +28,7 @@ $('.mobile-toggle')?.addEventListener('click',()=>$('.sidebar')?.classList.toggl
 // =====================================================
 async function api(path,opt={}
 // END SECTION: FUNCTION api
-){const r=await fetch(API_URL+path,{...opt,headers:{'Content-Type':'application/json','x-staff-id':user.staff_id,'x-role':user.role,...(opt.headers||{})}});const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{throw Error('Backend response error (HTTP '+r.status+')')};if(!r.ok)throw Error(d.error||('Request failed (HTTP '+r.status+')'));return d}
+){const r=await fetch(API_URL+path,{headers:{'Content-Type':'application/json','x-staff-id':user.staff_id,'x-role':user.role,...(opt.headers||{})},...opt});const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{throw Error('Backend response error')};if(!r.ok)throw Error(d.error||'Request failed');return d}
 // =====================================================
 // SECTION: FUNCTION msg
 // =====================================================
@@ -43,65 +41,28 @@ const createRoleSelect=$('form[data-type="staff"] select[name="role"]');
 
 // =====================================================
 // SECTION: STAFF CREATION UI HIERARCHY
+// Master Admin -> Admin -> Field Officer -> Supervisor -> Guard
 // =====================================================
 if(createRoleSelect){
+  // Only Master Admin and Admin can create members.
+  // Master Admin can create Admin/Field Officer/Supervisor/Guard.
+  // Admin can create Field Officer/Supervisor/Guard.
   const allowedByRole={
     master_admin:['admin','field_officer','officer','supervisor','guard'],
-    admin:['field_officer','officer'],
-    field_officer:['supervisor'],
-    supervisor:['guard']
+    admin:['field_officer','officer','supervisor','guard']
   };
   const allowed=allowedByRole[user?.role]||[];
-  [...createRoleSelect.options].forEach(o=>{
-    o.hidden=!allowed.includes(o.value);
-    o.disabled=!allowed.includes(o.value);
-  });
+  [...createRoleSelect.options].forEach(o=>{ if(!allowed.includes(o.value)) o.remove(); });
   if(allowed.length) createRoleSelect.value=allowed[0];
-
-  const syncRoleFields=()=>{
-    const rv=String(createRoleSelect.value||'');
-    const parent=$('#createParent');
-    const loc=$('#createLocation');
-    const dept=$('#createDepartment');
-    const post=$('#createPost');
-    const parentList=$('#createParentOptions');
-
-    if(dept){
-      const map={admin:'ADMIN',field_officer:'FIELD OFFICER',officer:'OFFICER',supervisor:'SUPERVISOR',guard:'GUARD'};
-      dept.value=map[rv]||dept.value;
-    }
-    if(post && !post.value){
-      const map={admin:'Admin',field_officer:'Field Officer',officer:'Officer',supervisor:'Supervisor',guard:'Guard'};
-      post.value=map[rv]||'';
-    }
-
-    const autoParent=
-      (user.role==='master_admin'&&rv==='admin')?'adi123':
-      (user.role==='admin'&&['field_officer','officer'].includes(rv))?user.staff_id:
-      (user.role==='field_officer'&&rv==='supervisor')?user.staff_id:
-      (user.role==='supervisor'&&rv==='guard')?user.staff_id:'';
-
-    if(parent){
-      parent.value=autoParent;
-      parent.readOnly=!!autoParent;
-      parent.required=true;
-    }
-    if(loc){
-      loc.required=['supervisor','guard'].includes(rv);
-    }
-    fillCreateParent(staff);
-    // fillCreateParent may populate the datalist; restore the hierarchy-determined parent.
-    if(parent && autoParent) parent.value=autoParent;
-  };
-  createRoleSelect.addEventListener('change',syncRoleFields);
-  setTimeout(syncRoleFields,0);
 }
 
+// Dedicated role pages must always send the logged-in parent ID.
 const staffCreateForm=$('form[data-type="staff"]');
 if(staffCreateForm && ['field_officer','supervisor'].includes(user?.role)){
   const parentInput=staffCreateForm.querySelector('input[name="parent_id"]');
-  if(parentInput){ parentInput.value=user.staff_id||''; parentInput.readOnly=true; }
+  if(parentInput) parentInput.value=user.staff_id||'';
 }
+
 // END SECTION: STAFF CREATION UI HIERARCHY
 let staff=[];
 
@@ -156,20 +117,6 @@ async function loadPremiumDashboard(stats){
 
 // =====================================================
 
-// =====================================================
-// SECTION: FUNCTION loadMessages
-// =====================================================
-async function loadMessages(){
-  const box=$('#messageRows'); if(!box)return;
-  try{
-    const rows=await api('/messages');
-    box.innerHTML=(rows||[]).map(x=>`<div class="notice-item message-item ${x.read_at?'read':'unread'}"><b>🔔 ${escape(x.message_type||'Message')}</b><p>${escape(x.message||'')}</p><small>${new Date(x.created_at).toLocaleString()} ${x.read_at?'• Read':'• New'}</small>${x.read_at?'':' <button class="action" onclick="markMessageRead('+Number(x.id)+')">Mark as read</button>'}</div>`).join('')||'<p>No messages.</p>';
-  }catch(e){box.innerHTML='<p class="muted-note">Unable to load messages.</p>';}
-}
-async function markMessageRead(id){try{await api('/messages/'+id+'/read',{method:'PUT'});loadMessages();}catch(e){alert(e.message)}}
-window.markMessageRead=markMessageRead;
-// END SECTION: FUNCTION loadMessages
-
 // SECTION: FUNCTION refresh
 
 // =====================================================
@@ -203,7 +150,7 @@ if(role==='field_officer'){
     .join('')||'<tr><td colspan=4>No Supervisors found.</td></tr>';
 }
 // END SECTION: FIELD OFFICER SUPERVISOR LIST
-window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);fillAdminPresentTargets(s);setupAdminMarkPresent();renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();if(role==='officer')loadMessages();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();}catch(e){console.log(e.message)}}
+window._attendanceRows=a;renderStaff(s);renderProfileRecords(s);fillCreateParent(s);fillAdminPresentTargets(s);setupAdminMarkPresent();renderAttendance(a);renderFines(f);renderAccount(ac);$$('[data-stat]').forEach(x=>x.textContent=stats[x.dataset.stat]??0);fillTargets(s);fillAdvanceTargets(s);renderDaily(a);loadNotices();loadHelp();loadPointTransfers();loadTaskTargets();loadTasks();if(!isAdminRole)loadTransferPoints();if(isAdminRole){loadPayroll();loadReports();loadRelievers();loadPointUpdates();loadDirectTransferPoints();}if(['supervisor','officer','field_officer'].includes(role))loadTeamAttendance();if(role==='field_officer')loadFieldOfficerRelievers();if(role==='officer')loadOfficerRelieverNotifications();}catch(e){console.log(e.message)}}
 
 // END SECTION: FUNCTION refresh
 
@@ -372,8 +319,9 @@ function renderDaily(rows){
 // SECTION: FUNCTION renderStaff
 // =====================================================
 function renderStaff(list){
- const groups={admin:'#adminRows',field_officer:'#fieldOfficerRows',officer:'#officerRows',supervisor:'#supervisorRows',guard:'#guardRows'};
+ const groups={field_officer:'#fieldOfficerRows',officer:'#officerRows',supervisor:'#supervisorRows',guard:'#guardRows'};
  Object.entries(groups).forEach(([r,sel])=>{const b=$(sel);if(!b)return;let rows=list.filter(x=>x.role===r);if(!isAdminRole)rows=rows.filter(x=>x.staff_id===user.staff_id);b.innerHTML=rows.map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.post||label(x.role))}</td><td>${escape(x.department||'')}</td><td>₹${Number(x.salary||0)}</td><td>${escape(x.status||'active')}</td><td>${isAdminRole?`<button class="action danger" onclick="removeStaff(${x.id})">Delete</button>`:'View Only'}</td></tr>`).join('')||'<tr><td colspan="7">No members found.</td></tr>';});
+ const adminBox=$('#adminRows');if(adminBox){const admins=list.filter(x=>x.role==='admin');adminBox.innerHTML=admins.map(x=>`<tr><td>${escape(x.name)}</td><td>${escape(x.staff_id)}</td><td>${escape(x.post||'Admin')}</td><td>${escape(x.status||'active')}</td><td><button class="action danger" onclick="removeStaff(${x.id})">Delete</button></td></tr>`).join('')||'<tr><td colspan="5">No Admin accounts found.</td></tr>';$('#adminMemberPanel')?.classList.toggle('hidden',user?.role!=='master_admin');}
  const legacy=$('#staffRows');if(legacy)legacy.innerHTML='';
 }
 // END SECTION: FUNCTION renderStaff
@@ -385,68 +333,117 @@ function renderStaff(list){
 // Builds the parent selector from the logged-in Admin hierarchy.
 function fillCreateParent(list){
   const form=$('form[data-type="staff"]');
-  const roleEl=form?.querySelector('select[name="role"], input[name="role"]');
-  const locInput=$('#createLocation'), locList=$('#createLocationOptions'), parentInput=$('#createParent'), parentList=$('#createParentOptions');
+  const roleSel=form?.querySelector('select[name="role"]');
+  const locSel=$('#createLocation'), parentSel=$('#createParent');
   const locHint=$('#createLocationHint'), parentHint=$('#createParentHint'), hierarchyHint=$('#createHierarchyHint');
-  if(!form||!roleEl||!parentInput)return;
+  if(!form||!roleSel||!parentSel||!locSel)return;
 
-  const roleVal=String(roleEl.value||'').trim();
-  const isMaster=user?.role==='master_admin';
+  const roleVal=String(roleSel.value||'').trim();
   const isNormalAdmin=user?.role==='admin';
-  const activeLocations=Object.values(locationConfigs||{})
-    .filter(x=>x&&x.active!==0&&String(x.code||'').trim())
-    .sort((a,b)=>String(a.code).localeCompare(String(b.code)));
 
-  // Location Code is always manually entered. Active locations are only suggestions.
-  if(locInput){
-    locInput.disabled=false;
-    locInput.required=!['admin','field_officer','officer'].includes(roleVal);
-    locInput.setAttribute('list','createLocationOptions');
-    if(locList)locList.innerHTML=activeLocations.map(x=>`<option value="${escape(x.code)}">${escape(x.code)} — ${escape(x.name||'')}</option>`).join('');
+  // Read the currently available location options before rebuilding the parent list.
+  const locations=[...locSel.options].filter(o=>String(o.value||'').trim()).map(o=>String(o.value).trim());
+
+  // Field Officer can own multiple locations. Every other operational role uses exactly one.
+  if(roleVal==='field_officer'){
+    locSel.multiple=true;
+    locSel.dataset.multi='true';
+    locSel.size=Math.min(Math.max(locations.length,3),6);
+    if(locHint)locHint.textContent='Field Officer: select one or more Location Codes. All selected locations will be assigned to this Field Officer.';
+  }else{
+    locSel.multiple=false;
+    delete locSel.dataset.multi;
+    locSel.size=1;
+    if(locHint)locHint.textContent='Select one Location Code.';
   }
-  if(locHint)locHint.textContent=roleVal==='field_officer'
-    ? 'Type Location Code manually. Active Location Codes are suggestions; Field Officer location can be assigned later.'
-    : 'Type Location Code manually. All active Location Codes are suggestions; server will validate the code.';
 
-  // Parent ID is also always manually entered. Suggestions are role-valid, but the
-  // user remains free to type the ID instead of selecting it.
+  // Re-read selections after the multiple/single mode is applied.
+  const selectedLocations=[...locSel.selectedOptions]
+    .map(o=>String(o.value||'').trim())
+    .filter(Boolean);
+  const selectedLocation=selectedLocations[0]||'';
+
   let parents=[];
-  if(roleVal==='admin' && isMaster){
-    parents=list.filter(s=>s.role==='master_admin'&&s.status==='active');
-    if(!parents.length)parents=[{staff_id:'adi123',name:'SNDF Director',role:'master_admin',status:'active'}];
-  }else if(['field_officer','officer'].includes(roleVal)){
-    parents=isNormalAdmin ? [user] : list.filter(s=>s.role==='admin'&&s.status==='active');
-  }else if(roleVal==='supervisor'){
-    // Do not filter by location because Location Code is manually typed.
-    parents=list.filter(s=>s.role==='field_officer'&&s.status==='active');
-  }else if(roleVal==='guard'){
-    // Do not filter by location because Location Code is manually typed.
-    parents=list.filter(s=>s.role==='supervisor'&&s.status==='active');
+
+  // Admin is the mandatory parent for Field Officer and Officer.
+  if(isNormalAdmin && ['field_officer','officer'].includes(roleVal)){
+    parents=[user];
+  }
+  // Supervisor must use a Field Officer who owns the selected location.
+  else if(roleVal==='supervisor'){
+    parents=list.filter(s=>
+      s.role==='field_officer' &&
+      s.status==='active' &&
+      Array.isArray(s.assigned_locations) &&
+      selectedLocation &&
+      s.assigned_locations.includes(selectedLocation)
+    );
+  }
+  // Guard must use a Supervisor at the exact selected location.
+  else if(roleVal==='guard'){
+    parents=list.filter(s=>
+      s.role==='supervisor' &&
+      s.status==='active' &&
+      selectedLocation &&
+      String(s.location_code||'')===selectedLocation
+    );
+  }
+  // Master Admin's existing parent behavior is preserved.
+  else if(!isNormalAdmin && ['field_officer','officer'].includes(roleVal)){
+    parents=list.filter(s=>s.role==='admin' && s.status==='active');
   }
 
-  if(parentList)parentList.innerHTML=parents.map(s=>`<option value="${escape(s.staff_id||'')}">${escape(s.name||'')} — ${label(s.role)}</option>`).join('');
+  const requiredForAdmin=isNormalAdmin && roleVal!=='admin';
 
-  const autoParent=(roleVal==='admin'&&isMaster)?'adi123':
-    (isNormalAdmin&&['field_officer','officer'].includes(roleVal)?String(user.staff_id||''):'');
-  parentInput.disabled=false;
-  parentInput.required=roleVal!=='master_admin';
-  parentInput.setAttribute('list','createParentOptions');
-  if(autoParent)parentInput.value=autoParent;
+  // Always show the actual Parent Staff ID prominently in the option text.
+  const labelText =
+    roleVal==='supervisor' ? 'Select Field Officer Parent ID' :
+    roleVal==='guard' ? 'Select Supervisor Parent ID' :
+    ['field_officer','officer'].includes(roleVal) ? 'Select Admin Parent ID' :
+    'Select Parent ID';
 
-  if(parentHint)parentHint.textContent=autoParent
-    ? `Parent ID suggestion: ${autoParent}. You may type the ID manually.`
-    : parents.length
-      ? `${parents.length} valid Parent ID suggestion(s) available. Type manually or choose a suggestion.`
-      : 'No parent suggestion available. Type the Parent ID manually if you already know it.';
+  parentSel.innerHTML='<option value="">'+labelText+'</option>'+
+    parents.map(s=>{
+      const id=escape(s.staff_id||'');
+      const name=escape(s.name||'');
+      const locs=Array.isArray(s.assigned_locations)&&s.assigned_locations.length
+        ? ' • '+escape(s.assigned_locations.join(', '))
+        : (s.location_code ? ' • '+escape(s.location_code) : '');
+      return `<option value="${id}">${id} — ${name}${locs}</option>`;
+    }).join('');
 
-  const hints={
-    admin:'Admin → Parent is Director. Type the Director ID manually; suggestion is provided.',
-    field_officer:'Field Officer → Parent must be an active Admin. Type the Admin ID manually; suggestions are provided.',
-    officer:'Officer → Parent must be an active Admin. Type the Admin ID manually; suggestions are provided.',
-    supervisor:'Supervisor → Parent must be an active Field Officer. Type the Field Officer ID manually; suggestions are provided.',
-    guard:'Guard → Parent must be an active Supervisor at the same Location Code. Type the Supervisor ID manually; suggestions are provided.'
-  };
-  if(hierarchyHint)hierarchyHint.textContent=hints[roleVal]||'Select a role and enter Location Code and Parent ID manually.';
+  if(requiredForAdmin){
+    parentSel.required=true;
+    parentSel.disabled=false;
+
+    // For a normal Admin, its own Staff ID is automatically the parent.
+    if(['field_officer','officer'].includes(roleVal)){
+      parentSel.value=String(user?.staff_id||'');
+      if(parentHint)parentHint.textContent=`Parent Admin ID: ${user?.staff_id||'—'} (automatic)`;
+    }else{
+      if(parentHint){
+        parentHint.textContent=parents.length
+          ? `Select Parent ID. ${parents.length} valid parent(s) available for Location ${selectedLocation||'—'}.`
+          : `No valid parent found for Location ${selectedLocation||'—'}. Create/assign the required parent first.`;
+      }
+    }
+  }else{
+    parentSel.required=false;
+    parentSel.disabled=false;
+    if(parentHint)parentHint.textContent=parents.length
+      ? 'Select the correct Parent ID according to the hierarchy.'
+      : 'Select the correct parent according to the hierarchy.';
+  }
+
+  if(hierarchyHint){
+    const map={
+      field_officer:'Field Officer → Parent must be Admin; one or more locations required.',
+      officer:'Officer → Parent must be Admin; one location required.',
+      supervisor:'Supervisor → Parent must be Field Officer assigned to the selected location.',
+      guard:'Guard → Parent must be Supervisor at the same selected location.'
+    };
+    hierarchyHint.textContent=map[roleVal]||'Admin account is created only by Master Admin.';
+  }
 }
 // END SECTION: FUNCTION fillCreateParent
 
@@ -523,8 +520,7 @@ function renderProfileRecords(list){
   const b=$('#profileRecordRows'); if(!b||!isAdminRole)return;
   const rf=$('#profileRoleFilter')?.value||'all', lf=$('#profileLocationFilter')?.value||'all';
   const rows=list.filter(s=>['master_admin','admin','field_officer','officer','supervisor','guard'].includes(s.role))
-    .filter(s=>rf==='all'||s.role===rf)
-    .filter(s=>lf==='all'||String(s.location_code||'')===lf||Array.isArray(s.assigned_locations)&&s.assigned_locations.some(code=>String(code||'').toLowerCase()===String(lf).toLowerCase()));
+    .filter(s=>rf==='all'||s.role===rf).filter(s=>lf==='all'||String(s.location_code||'')===lf);
   b.innerHTML=rows.map(s=>`<tr>
     <td><img class="profile-thumb" src="${escape(s.dp||s.photo_front||'assets-logo.png')}" alt="Profile"></td>
     <td>${label(s.role)}</td><td>${escape(s.name)}</td><td><b>${escape(s.staff_id)}</b></td>
@@ -624,12 +620,11 @@ function populateLocationSelects(){
   const options=rows.map(x=>`<option value="${escape(x.code)}">${escape(x.code)} — ${escape(x.name)} (${Number(x.duty_hours)===8?8:12} Hours)</option>`).join('');
   const create=$('#createLocation');
   if(create){
+    // Preserve all selected locations when Field Officer multi-location mode is active.
     const cur=[...create.selectedOptions].map(o=>o.value).filter(Boolean);
     create.innerHTML='<option value="">Select Location</option>'+options;
     cur.forEach(code=>{const opt=[...create.options].find(o=>o.value===code);if(opt)opt.selected=true;});
   }
-  const createList=$('#createLocationOptions');
-  if(createList) createList.innerHTML=rows.map(x=>`<option value="${escape(x.code)}">${escape(x.code)} — ${escape(x.name||'')} (${Number(x.duty_hours)===8?8:12} Hours)</option>`).join('');
   const rel=$('#relieverLocation'); if(rel){const cur=rel.value;rel.innerHTML='<option value="">Select Location</option>'+options; if(rows.some(x=>x.code===cur))rel.value=cur;}
   const point=$('#pointUpdateLocationFilter'); if(point){const cur=point.value;point.innerHTML='<option value="all">All Locations</option>'+options; if(rows.some(x=>x.code===cur))point.value=cur;}
   const profile=$('#profileLocationFilter'); if(profile){const cur=profile.value;profile.innerHTML='<option value="all">All Locations</option>'+options; if(rows.some(x=>x.code===cur))profile.value=cur;}
@@ -646,7 +641,7 @@ function populateLocationSelects(){
 // =====================================================
 
 function currentShift(){
-  const h=new Date().getHours(), duty=(window.sndfAttendanceDutyHours||currentDutyHours());
+  const h=new Date().getHours(), duty=currentDutyHours();
   if(duty===8){
     if(h>=6&&h<14)return 'Morning Shift';
     if(h>=14&&h<22)return 'Evening Shift';
@@ -660,20 +655,8 @@ function currentShift(){
 // =====================================================
 // SECTION: FUNCTION fillAutoAttendance
 // =====================================================
-async function fillAutoAttendance(){
-  let attendanceLocation=user?.location_code||'—';
-  let dutyHours=currentDutyHours();
-  if(['master_admin','admin','field_officer','officer'].includes(user?.role)){
-    try{
-      const office=await api('/main-office');
-      attendanceLocation=office?.code||'—';
-      dutyHours=Number(office?.duty_hours)===8?8:12;
-    }catch(e){
-      attendanceLocation='Main Office not configured';
-    }
-  }
-  window.sndfAttendanceDutyHours=dutyHours;
-  const map={autoName:user?.name,autoStaffId:user?.staff_id,autoRole:label(user?.role),autoLocationCode:attendanceLocation,autoParentId:user?.parent_id||'—',autoShift:currentShift()+' • '+dutyHours+' Hours Duty',autoDutyHours:dutyHours+' Hours'};
+function fillAutoAttendance(){
+  const map={autoName:user?.name,autoStaffId:user?.staff_id,autoRole:label(user?.role),autoLocationCode:user?.location_code||'—',autoParentId:user?.parent_id||'—',autoShift:currentShift()+' • '+currentDutyHours()+' Hours Duty',autoDutyHours:currentDutyHours()+' Hours'};
   Object.entries(map).forEach(([id,v])=>{const x=$('#'+id);if(x)x.textContent=v||'—'});
 }
 // END SECTION: FUNCTION fillAutoAttendance
@@ -686,52 +669,6 @@ async function startLiveCamera(){
   try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:720},height:{ideal:720}},audio:false});const v=$('#camera');if(v)v.srcObject=stream;}
   catch(e){msg('Camera permission required. Tap Take Photo after allowing camera.');}
 }
-
-// =====================================================
-// SECTION: FINE CAMERA
-// =====================================================
-let fineStream=null;
-async function startFineCamera(){
-  const v=$('#fineCamera');
-  if(!v)return;
-  if(!window.isSecureContext && location.hostname!=='localhost' && location.hostname!=='127.0.0.1'){
-    msg('Camera needs HTTPS. Railway public URL must use https://.');
-    return;
-  }
-  if(!navigator.mediaDevices?.getUserMedia){
-    msg('This browser does not support camera access.');
-    return;
-  }
-  try{
-    if(fineStream) fineStream.getTracks().forEach(t=>t.stop());
-    fineStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}},audio:false});
-    v.srcObject=fineStream;
-    await v.play().catch(()=>{});
-  }catch(e){
-    console.error('Fine camera:',e);
-    msg('Fine camera permission denied. Allow Camera in browser settings and try again.');
-  }
-}
-$('#fineCapture')?.addEventListener('click',async()=>{
-  if(!fineStream) await startFineCamera();
-  const v=$('#fineCamera');
-  if(!v?.videoWidth){alert('Fine camera start nahi hua. Camera permission allow karein.');return;}
-  const c=document.createElement('canvas');
-  c.width=Math.min(v.videoWidth,1280);
-  c.height=Math.round(c.width*(v.videoHeight/v.videoWidth));
-  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
-  const image=c.toDataURL('image/jpeg',.78);
-  const hidden=$('#fineImage'); if(hidden) hidden.value=image;
-  const preview=$('#fineCaptured'); if(preview){preview.src=image;preview.style.display='block';}
-  msg('Fine evidence photo captured ✓');
-});
-$('#fineRetake')?.addEventListener('click',()=>{
-  const hidden=$('#fineImage'); if(hidden) hidden.value='';
-  const preview=$('#fineCaptured'); if(preview) preview.removeAttribute('src');
-  startFineCamera();
-});
-// Start when Fine section becomes visible; also retry on first capture.
-startFineCamera();
 // END SECTION: FUNCTION startLiveCamera
 
 // =====================================================
@@ -819,111 +756,30 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
       delete d.reason_select; delete d.reason_custom;
     }
     if(form.dataset.type==='staff'){
-      delete window.__lastCreatedStaff;
-      // =====================================================
-      // MEMBER CREATE | STRICT CREATOR HIERARCHY
-      // Master Admin -> Admin/Field Officer/Officer/Supervisor/Guard
-      // Admin -> Field Officer/Officer
-      // Field Officer -> Supervisor
-      // Supervisor -> Guard
-      // =====================================================
-      const creator=String(user?.role||'');
-      const targetRole=String(d.role||'').trim().toLowerCase();
-      const allowedByCreator={
-        master_admin:['admin','field_officer','officer','supervisor','guard'],
-        admin:['field_officer','officer'],
-        field_officer:['supervisor'],
-        supervisor:['guard']
-      };
-      const allowed=allowedByCreator[creator]||[];
-      if(!allowed.includes(targetRole))
-        throw Error(`You cannot create ${label(targetRole)}. Allowed role: ${allowed.map(label).join(', ')||'None'}`);
+      // Only Admin and Master Admin can create members.
+      if(!['admin','master_admin'].includes(user?.role)) throw Error('Only Admin or Master Admin can create members');
 
-      const locationInput=$('#createLocation');
-      const parentInput=$('#createParent');
-      const typedLocation=String(locationInput?.value||d.location_code||'').trim();
-      let selectedLocations=typedLocation?[typedLocation]:[];
+      const locationSelect=$('#createLocation');
+      const selectedLocations=locationSelect ? [...locationSelect.selectedOptions].map(o=>String(o.value||'').trim()).filter(Boolean) : [];
       d.location_codes=selectedLocations;
-      d.location_code=typedLocation;
+      // Keep the legacy single location_code field for APIs/reports that use it.
+      d.location_code=selectedLocations[0]||'';
+      // Field Officer and Officer created by a normal Admin always belong to that Admin.
+      if(user?.role==='admin' && ['field_officer','officer'].includes(d.role)) d.parent_id=user.staff_id;
 
-      // Parent is automatic wherever hierarchy determines it.
-      if((creator==='admin') && ['field_officer','officer'].includes(targetRole))
-        d.parent_id=user.staff_id;
-      else if(creator==='field_officer' && targetRole==='supervisor')
-        d.parent_id=user.staff_id;
-      else if(creator==='supervisor' && targetRole==='guard')
-        d.parent_id=user.staff_id;
-      else if(creator==='master_admin' && targetRole==='admin')
-        d.parent_id='adi123';
-
-      if(parentInput && d.parent_id) parentInput.value=d.parent_id;
-
-      // Field Officer / Officer are assigned work locations later.
-      if(['field_officer','officer'].includes(targetRole) && !typedLocation){
-        selectedLocations=[];
-        d.location_codes=[];
-        d.location_code='';
+      // Normal Admin must create every operational role with Parent ID + Location.
+      if(user?.role==='admin' && d.role!=='admin'){
+        if(!String(d.parent_id||'').trim()) throw Error(`Parent ID is required for ${d.role}`);
+        if(!selectedLocations.length) throw Error(`Location Code is required for ${d.role}`);
+        if(['supervisor','guard','officer'].includes(d.role) && selectedLocations.length!==1)
+          throw Error(`${d.role} can use only one Location Code`);
       }
-
-      // A Supervisor can only use a location already assigned to its Field Officer.
-      if(creator==='field_officer' && targetRole==='supervisor' && !typedLocation)
-        throw Error('Supervisor ke liye Field Officer ki assigned Location Code select/enter karein.');
-
-      // Guard must use the Supervisor's exact location.
-      if(creator==='supervisor' && targetRole==='guard' && !typedLocation)
-        throw Error('Guard ke liye Supervisor ki Location Code select/enter karein.');
-
-      // Master Admin creating Supervisor/Guard must supply valid parent + one location.
-      if(creator==='master_admin' && ['supervisor','guard'].includes(targetRole)){
-        if(!String(d.parent_id||'').trim()) throw Error(`${label(targetRole)} ke liye Parent ID required hai.`);
-        if(selectedLocations.length!==1) throw Error(`${label(targetRole)} ke liye exactly one Location Code required hai.`);
+      if(['supervisor','guard'].includes(d.role)){
+        if(!String(d.location_code||'').trim()) throw Error(`Location Code is required for ${d.role}`);
+        if(!String(d.parent_id||'').trim()) throw Error(`Parent ID is required for ${d.role}`);
       }
-
-      d.name=String(d.name||'').trim();
-      d.staff_id=String(d.staff_id||'').trim();
-      d.password=String(d.password||'');
-      d.post=String(d.post||'').trim();
-      d.department=String(d.department||'').trim();
-      d.dob=String(d.dob||'').trim();
-      d.contact_number=String(d.contact_number||'').trim();
-
-      // Core account fields are required. DOB/department/phone are profile fields and
-      // must not prevent creation of a new Admin/member; they can be completed later.
-      if(!d.name||!d.staff_id||!d.password||!d.post)
-        throw Error('Name, Staff ID, Password and Post are required');
-      d.department=d.department||label(targetRole).toUpperCase();
-      d.dob=d.dob||'';
-      d.contact_number=d.contact_number||'';
-      if(d.password.length<6) throw Error('Password must be at least 6 characters');
-      if(Number(d.salary||0)<0) throw Error('Salary cannot be negative');
-      if(!/^\+?[0-9\s()-]{10,20}$/.test(d.contact_number))
-        throw Error('Enter a valid phone number');
-
-      if(targetRole!=='admin' && !String(d.parent_id||'').trim())
-        throw Error(`${label(targetRole)} ke liye Parent ID required hai.`);
-
-      if(targetRole==='admin'){
-        if(creator!=='master_admin') throw Error('Only Master Admin can create Admin.');
-        d.parent_id='adi123';
-      }
-
-      if(['supervisor','guard'].includes(targetRole) && selectedLocations.length!==1)
-        throw Error(`${label(targetRole)} ke liye exactly one Location Code select karein.`);
-
-      const created=await api('/staff',{method:'POST',body:JSON.stringify(d)});
-      window.__lastCreatedStaff={
-        staff_id:created.staff_id||d.staff_id, role:created.role||targetRole,
-        name:created.name||d.name, database_id:created.id, post:created.post||d.post,
-        salary:created.salary??d.salary, dob:created.dob||d.dob,
-        department:created.department||d.department,
-        location_code:created.location_code||d.location_code,
-        location_codes:created.assigned_locations||created.location_codes||d.location_codes||[],
-        parent_id:created.parent_id||d.parent_id||'',
-        contact_number:created.contact_number||d.contact_number
-      };
-      // =====================================================
-      // END MEMBER CREATE
-      // =====================================================
+      const created = await api('/staff',{method:'POST',body:JSON.stringify(d)});
+      window.__lastCreatedStaff = { staff_id: created.staff_id||d.staff_id, role: created.role||d.role, name: created.name||d.name, database_id: created.id };
     }
     if(form.dataset.type==='fine')await api('/fines',{method:'POST',body:JSON.stringify(d)});
     if(form.dataset.type==='advance')await api('/advances',{method:'POST',body:JSON.stringify(d)});
@@ -931,27 +787,9 @@ $$('form[data-type]').forEach(form=>form.addEventListener('submit',async e=>{
     if(form.dataset.type==='help')await api('/help',{method:'POST',body:JSON.stringify(d)});
     const createdInfo=window.__lastCreatedStaff;
     msg(createdInfo ? `Member created ✓  Staff ID: ${createdInfo.staff_id}` : 'Saved successfully');
-    if(createdInfo){
-      const panel=$('#recentCreatedMemberPanel'), grid=$('#recentCreatedMemberGrid');
-      if(panel&&grid){
-        const locations=(createdInfo.location_codes||[]).length ? createdInfo.location_codes.join(', ') : (createdInfo.location_code||'—');
-        const detail=(labelText,value)=>`<div class=\"recent-created-item\"><span>${escape(labelText)}</span><b>${escape(value==null||value===''?'—':String(value))}</b></div>`;
-        grid.innerHTML=[
-          detail('Name',createdInfo.name), detail('Staff ID',createdInfo.staff_id), detail('Role',label(createdInfo.role)),
-          detail('Post',createdInfo.post), detail('Salary','₹'+(createdInfo.salary??0)), detail('Date of Birth',createdInfo.dob),
-          detail('Department',createdInfo.department), detail('Location Code',locations), detail('Parent ID',createdInfo.parent_id),
-          detail('Phone Number',createdInfo.contact_number), detail('Database ID',createdInfo.database_id)
-        ].join('');
-        panel.classList.remove('hidden');
-      }
-    }
-    const createdRole=createdInfo?.role||d.role;
     delete window.__lastCreatedStaff;
     form.reset();
-    const memberFilter=$('#memberRoleFilter');
-    if(memberFilter){ memberFilter.value=createdRole||'all'; }
-    await refresh();
-    filterMemberLists();
+    refresh()
   }catch(err){alert(err.message)}
 }));
 $('#pointTransferForm')?.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{await api('/point-transfers',{method:'POST',body:JSON.stringify(d)});msg('Point transfer request sent to Admin');e.target.reset();loadPointTransfers();}catch(err){alert(err.message)}});
@@ -979,8 +817,8 @@ $('#suspendForm')?.addEventListener('submit',async e=>{e.preventDefault();try{aw
 $('#downloadDaily')?.addEventListener('click',()=>{const d=$('#dailyDate')?.value||new Date().toISOString().slice(0,10);const loc=($('#dailyLocation')?.value||'').trim();const duty=$('#dailyDutyHours')?.value||'all';const shift=$('#dailyShift')?.value||'all';downloadAttendance('',d,'',loc,duty,shift)});
 $('#downloadAttendanceMatrix')?.addEventListener('click',()=>{const m=$('#attendanceMonth')?.value||new Date().toISOString().slice(0,7);const loc=$('#attendanceLocation')?.value||'all';const duty=$('#attendanceDutyHours')?.value||'all';const shift=$('#attendanceShift')?.value||'all';downloadAttendance('', '', m, loc,duty,shift)});
 $('#attendanceMonth')?.addEventListener('change',()=>{if(isAdminRole)refresh()});$('#dailyDate')?.setAttribute('value',new Date().toISOString().slice(0,10));$('#attendanceMonth')?.setAttribute('value',new Date().toISOString().slice(0,7));$('#dailyDate')?.addEventListener('change',()=>renderDaily(window._attendanceRows||[]));$('#dailyLocation')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#dailyIdSearch')?.addEventListener('input',()=>renderDaily(window._attendanceRows||[]));$('#attendanceIdSearch')?.addEventListener('input',()=>renderAttendance(window._attendanceRows||[]));window.downloadAttendanceMonth=(r)=>{const m=$('#attendanceMonth')?.value;if(!m)return alert('Select a month first');downloadAttendance(r,'',m)};
-$('form[data-type="staff"] select[name="role"], form[data-type="staff"] input[name="role"]')?.addEventListener('change',()=>fillCreateParent(staff));
-$('#createLocation')?.addEventListener('input',()=>fillCreateParent(staff));
+$('form[data-type="staff"] select[name="role"]')?.addEventListener('change',()=>fillCreateParent(staff));
+$('#createLocation')?.addEventListener('change',()=>fillCreateParent(staff));
 $('#profileRoleFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
 $('#profileLocationFilter')?.addEventListener('change',()=>renderProfileRecords(staff));
 $('#downloadProfileUpdateSheet')?.addEventListener('click',()=>{
@@ -1011,8 +849,8 @@ setupAttendanceFilters();
 $('#attendanceRoleFilter')?.addEventListener('change',()=>renderAttendance(window._attendanceRows||[]));
 $('#accountRoleFilter')?.addEventListener('change',()=>loadPayroll());
 $('#memberRoleFilter')?.addEventListener('change',()=>filterMemberLists());$('#createRole')?.addEventListener('change',()=>{ if(!isAdminRole)return; fillCreateParent(staff); });
-if(user?.role!=='master_admin'){ $('#createRole')?.querySelector('.master-only-option')?.remove();  }
-if(user?.role==='master_admin'){ const x=$('#dashboardRoleLabel'); if(x)x.textContent='SNDF DIRECTOR'; const note=document.querySelector('#staff .muted-note'); if(note)note.textContent='Director can create Admin, Field Officer, Officer, Supervisor and Guard. Normal Admin cannot create another Admin.'; }
+if(user?.role!=='master_admin'){ $('#createRole')?.querySelector('.master-only-option')?.remove(); }
+if(user?.role==='master_admin'){ const x=$('#dashboardRoleLabel'); if(x)x.textContent='SNDF MASTER ADMIN'; const note=document.querySelector('#staff .muted-note'); if(note)note.textContent='Master Admin can create Admin, Field Officer, Supervisor and Guard. Normal Admin cannot create another Admin.'; }
 
 // =====================================================
 
@@ -1020,19 +858,7 @@ if(user?.role==='master_admin'){ const x=$('#dashboardRoleLabel'); if(x)x.textCo
 
 // =====================================================
 
-function filterMemberLists(){
-  const selected=$('#memberRoleFilter')?.value||'all';
-  const master=user?.role==='master_admin';
-  document.querySelectorAll('[data-role-list]').forEach(panel=>{
-    const panelRole=panel.dataset.roleList;
-    const isAdminPanel=panelRole==='admin';
-    // Admin list is visible only to Director, but it also follows the role filter.
-    const allowed=(!isAdminPanel || master) && (selected==='all' || panelRole===selected);
-    panel.classList.toggle('hidden',!allowed);
-  });
-  const adminPanel=$('#adminMemberPanel');
-  if(adminPanel && !master) adminPanel.classList.add('hidden');
-}
+function filterMemberLists(){const role=$('#memberRoleFilter')?.value||'field_officer';document.querySelectorAll('[data-role-list]').forEach(panel=>panel.classList.toggle('hidden',panel.dataset.roleList!==role));}
 
 // END SECTION: FUNCTION filterMemberLists
 
@@ -1461,8 +1287,8 @@ $('#logout')?.addEventListener('click',()=>{sessionStorage.removeItem('sndfUser'
 loadProfile();refresh();
 if($('#p_staff_id')) $('#p_staff_id').value=user.staff_id;
 if(!isAdminRole && !['field_officer','supervisor'].includes(role)){ $('#staff')?.remove(); $('#advance')?.remove(); $('#suspend')?.remove(); $('#profile-records')?.remove(); }
-if(role==='field_officer'){const f=$('#team-management form[data-type="staff"]'); if(f){const p=f.querySelector('input[name="parent_id"]'); if(p)p.value=user.staff_id;}}
-if(role==='officer'){['team-attendance','team-management','tasks'].forEach(id=>$('#'+id)?.remove());document.querySelectorAll('[data-view="team-attendance"],[data-view="team-management"],[data-view="tasks"]').forEach(x=>x.remove());loadMessages();}
+if(role==='field_officer'){$('#team-management form[data-type="staff"]')?.remove();$('#team-management h3')?.remove();$('#team-management .muted-note')?.remove();}
+if(role==='officer'){['daily','team-attendance','team-management','fine','help','point-transfer','tasks'].forEach(id=>$('#'+id)?.remove());document.querySelectorAll('[data-view="daily"],[data-view="team-attendance"],[data-view="team-management"],[data-view="fine"],[data-view="help"],[data-view="point-transfer"],[data-view="tasks"]').forEach(x=>x.remove());loadOfficerRelieverNotifications();}
 if(!isAdminRole) $$('[onclick^="downloadAttendance"]').forEach(b=>b.remove());
 if(!['admin','field_officer','officer'].includes(role)) $('#fine')?.querySelector('.fine-form')?.remove();
 if(isAdminRole) $('#fine')?.querySelector('.fine-form')?.insertAdjacentHTML('afterend','<p>Admin may fine Guard or Supervisor.</p>');

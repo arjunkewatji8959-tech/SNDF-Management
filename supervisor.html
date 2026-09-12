@@ -654,11 +654,11 @@
               <input name="salary" type="number" min="0" placeholder="Salary">
               <input name="dob" type="date">
               <input name="department" placeholder="Department">
-              <input name="location_code" id="createLocation" list="createLocationOptions" autocomplete="off" placeholder="Enter Location Code manually" required>
-              <datalist id="createLocationOptions"></datalist>
-              <input name="parent_id" id="createParent" list="createParentOptions" value="" placeholder="Enter Parent Staff ID manually" autocomplete="off" required>
-              <datalist id="createParentOptions"></datalist>
-              <input name="contact_number" placeholder="Contact Number" required>
+              <select name="location_code" id="createLocation" required>
+                <option value="">Select Location</option>
+              </select>
+              <input type="hidden" name="parent_id" id="createSupervisorParent" value="">
+              <input name="contact_number" placeholder="Contact Number">
               <button class="action primary-action">
                 Create Guard
               </button>
@@ -837,7 +837,7 @@
               Create / Assign Task
             </h3>
             <p class="muted-note">
-              Task hierarchy: Director → Admin/Field Officer/Supervisor/Guard; Admin → Field Officer/Supervisor/Guard; Field Officer → Supervisor/Guard; Supervisor → Guard.
+              Task hierarchy: Master Admin → Admin/Field Officer/Supervisor/Guard; Admin → Field Officer/Supervisor/Guard; Field Officer → Supervisor/Guard; Supervisor → Guard.
             </p>
             <form id="taskCreateForm" class="grid-form task-create-form">
               <label>
